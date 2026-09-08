@@ -113,6 +113,15 @@ The ceiling is right for a skill tag and wrong for the dimensions you opened a
 job board to filter on: `Mid` sits on 48% of postings and `On-site` on 86%, and
 ranking `Remote` above `₹60L–1Cr PPP` is worth saying anyway.
 
+### 203 tags across nine lanes
+
+Tech, role, domain, conditions, **company stage**, **benefits**, **office**,
+plus the structured facets (level, location, region, pay band, experience,
+family). Company stage, benefits and office days were missing entirely until
+v6 — nothing distinguished a twelve-person seed startup from a listed
+multinational, `Equity` was the only benefit, and `Hybrid` covered everything
+from one day a month to four days a week.
+
 ### The learner
 
 Bradley-Terry over pairwise comparisons — the same maths as Elo. Clicked beats
@@ -140,7 +149,22 @@ re-sorting mid-click would pull the card out from under your cursor. When the
 pinned order has fallen behind the scores, the view offers
 `re-sort — N cards moved`. It never does it to you unasked.
 
-### "Not for me"
+### "more like this" / "not for me"
+
+Two whole-posting verdicts, neither of which guesses which tag earned it.
+
+**more like this** puts every rankable tag on the posting above neutral (0.4
+weight) and *keeps* the card — Rated doubles as your shortlist. **not for me**
+is the same move downward (0.25 weight) plus hiding. A like outweighs a
+dismissal because you dismiss in bulk on cards you barely read and save one you
+actually considered; both stay well below an explicit tag ranking, because
+neither names a tag.
+
+The old per-chip `·` marker is gone. Right-click already says "worst thing
+here", and three targets on one chip — the third a bare dot — read as a stray
+dash rather than a control.
+
+### The negative half of that
 
 A weak negative across all the posting's rankable tags (0.25 weight), plus
 hiding. It deliberately does not guess *which* tag was at fault — that

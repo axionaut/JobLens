@@ -293,3 +293,72 @@ in muted text.
 `resumeClear` assigned a whole new `state.settings` object, dropping
 `salaryFilter` (and now `filtersOpen`) with it, so clearing a resume silently
 reset the salary filter. It now clears only the three resume keys.
+
+## 6. A positive verdict, and a wider vocabulary
+
+### 6.1 The model could only be told no
+
+"Not for me" had no opposite. The only whole-posting verdict was negative, so
+the jobs worth applying to -- the ones with the most to teach -- taught nothing
+unless you also picked apart which tag earned it.
+
+`likeJob` is the mirror: every rankable tag on the posting goes above `BASELINE`
+at `LIKE_WEIGHT` 0.4, without guessing which one did the work. Weighted above a
+dismissal (0.25) because you dismiss in bulk on cards you barely read and save
+one you actually considered, and well below an explicit ranking (1.0) because it
+still names no tag.
+
+It does **not** hide the card. That is the point: Rated doubles as the shortlist
+of postings worth going back to. It leaves the For You candidate pool the way a
+ranked posting does, and the two verdicts are mutually exclusive -- liking
+clears a dismissal and vice versa.
+
+### 6.2 The middot is gone
+
+The per-chip `·` marked a tag as never-wanted. That is a real distinction from
+right-click's "worst thing on THIS posting" -- absolute against relative -- but
+three targets on one 80px chip, the third a bare dot, read as a stray dash
+rather than a control. Chips now have two gestures and the card has two
+verdicts.
+
+`ranking.disliked` stays in the model: dismissals populate it, and stored v2-v5
+records still carry it, so a disliked tag still renders (as `✕`) and still
+trains. Nothing stored is reinterpreted.
+
+### 6.3 Ontology: 120 -> 203 entries
+
+Four dimensions were missing outright.
+
+- **Company** (10, new lane): seed / Series A-B / Series C+ / public /
+  bootstrapped / unicorn / tiny team / big company / agency / non-profit.
+  Nothing previously distinguished a twelve-person startup from a listed
+  multinational.
+- **Benefits** (12, new lane): 4-day week, unlimited PTO, 30d+ leave, parental
+  leave, learning budget, home-office stipend, health insurance, retirement
+  match, bonus, wellness, sabbatical, work-from-anywhere. Only `Equity` existed.
+- **Office** (7, new lane): remote-first, 1-2 days in office, 3+ days in office,
+  timezone overlap, async-friendly, flexible hours, relocation expected.
+  `Hybrid` covered everything from one day a month to four a week.
+- **Tail**: 29 more stacks (QA/Playwright, Databricks, ClickHouse, Flink,
+  Prometheus, GitHub Actions, Helm/ArgoCD, eBPF, Solidity, Unity, WASM,
+  Tailwind, Figma, Salesforce, SAP, Tableau, Haskell, ROS, FPGA, GDPR, SOC2,
+  ...), 12 industries (crypto, insurance, proptech, travel, legal, HR, adtech,
+  telecom, manufacturing, aerospace, agritech, sports), 4 more languages, and
+  8 conditions (take-home, live coding, degree/no degree, founding role,
+  IC vs manager-of-managers).
+
+One realistic posting went from ~9 tags to 30.
+
+### 6.4 Two false positives the expansion exposed
+
+- `rails` matched "payment rails", so fintech postings claimed Ruby. Now
+  requires "on rails" or "rails framework/app/application/developer".
+- Bare `healthcare` matched the benefits paragraph of any posting offering
+  private medical cover, so unrelated companies read as healthtech. Now requires
+  healthtech / digital health / clinical trials-data-workflow / patients /
+  biotech / medical device / life sciences / pharma / EHR / "healthcare
+  platform|provider|system|company|industry". The `Health insurance` perk tag
+  carries the benefits sense.
+
+`founding engineer` was also dropped from `Greenfield/0-to-1`, which
+`Startup founding role` now names precisely -- two tags for one fact is noise.

@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -777,7 +777,7 @@ function salaryHtml(job) {
 const TAG_CATEGORIES = {
   work: 'Work', tech: 'Tech', domain: 'Domain', seniority: 'Seniority',
   experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions',
-  family: 'Role family'
+  family: 'Role family', stage: 'Company', perk: 'Benefits', office: 'Office'
 };
 
 const w = body => new RegExp('(^|[^a-z0-9+#.])' + body + '([^a-z0-9+#]|$)', 'i');
@@ -792,7 +792,8 @@ const TAG_ONTOLOGY = [
   ['Java', 'tech', /\bjava\b(?!script)/i],
   ['Kotlin', 'tech', w('kotlin')],
   ['Swift', 'tech', w('swift')],
-  ['Ruby', 'tech', /\bruby\b|\brails\b/i],
+  // Bare \brails\b caught "payment rails", so a fintech posting claimed Ruby.
+  ['Ruby', 'tech', /\bruby\b|\bon rails\b|\brails (framework|app|application|developer)\b/i],
   ['C++', 'tech', /c\+\+/i],
   ['C#/.NET', 'tech', /\bc#|\.net\b/i],
   ['Scala', 'tech', w('scala')],
@@ -885,7 +886,10 @@ const TAG_ONTOLOGY = [
   ['Fintech/Payments', 'domain', /\b(fintech|payments|banking|lending|insurance|trading|financial services)\b/i],
   ['Developer tools', 'domain', /\b(developer tool|devtool|developer platform|api platform|open source)\b/i],
   ['AI labs/Frontier', 'domain', /\b(agi|frontier model|ai safety|alignment research|ai lab)\b/i],
-  ['Healthcare/Bio', 'domain', /\b(healthcare|clinical|patient|biotech|medical device|life sciences|pharma)\b/i],
+  // Bare "healthcare" matched the benefits paragraph of every posting that
+  // offers private medical cover, so unrelated companies read as healthtech.
+  // The Health insurance perk tag covers that sense now.
+  ['Healthcare/Bio', 'domain', /\b(health ?tech|digital health|clinical (trials?|data|workflow)|patients?\b|biotech|medical device|life sciences|pharma|ehr\b|healthcare (platform|provider|system|company|industry))\b/i],
   ['E-commerce/Retail', 'domain', /\b(e-?commerce|marketplace|retail|shopper|merchandis)/i],
   ['Gaming', 'domain', /\b(game (developer|studio|design)|gaming|unreal engine|unity engine)\b/i],
   ['Climate/Energy', 'domain', /\b(climate|renewable|clean energy|sustainability|decarbon|solar|battery)\b/i],
@@ -903,7 +907,7 @@ const TAG_ONTOLOGY = [
   ['On-call', 'condition', /\b(on-?call rotation|pager duty|24\/7 support)\b/i],
   ['Security clearance', 'condition', /\b(security clearance|ts\/sci|top secret|polygraph)\b/i],
   ['Travel required', 'condition', /\b(travel (up to|requirement)|\d{2}% travel|frequent travel)\b/i],
-  ['Greenfield/0-to-1', 'condition', /\b(greenfield|zero to one|0 to 1|from scratch|ground up|founding engineer)\b/i],
+  ['Greenfield/0-to-1', 'condition', /\b(greenfield|zero to one|0 to 1|from scratch|ground up)\b/i],
   ['Mentorship', 'condition', /\b(mentor(ing|ship)|coach(ing)? engineers|grow the team)\b/i],
   ['Fast-paced', 'condition', /\b(fast-?paced|move quickly|high growth|scrappy)\b/i],
   ['Cross-functional', 'condition', /\bcross-?functional\b/i],
@@ -912,7 +916,110 @@ const TAG_ONTOLOGY = [
   ['Shift work', 'condition', /\b(shift work|night shift|weekend shift|rotating shift)\b/i],
   ['Contract/Temp', 'condition', /\b(contract role|fixed[- ]term|temporary position|freelance|contractor)\b/i],
   ['Part-time', 'condition', /\bpart[- ]time\b/i],
-  ['German required', 'condition', /\b(german (language )?(skills|required)|fließend deutsch|deutschkenntnisse|sehr gute deutsch)\b/i]
+  ['German required', 'condition', /\b(german (language )?(skills|required)|fließend deutsch|deutschkenntnisse|sehr gute deutsch)\b/i],
+  // --- company stage and size ----------------------------------------------
+  // Absent entirely before this: nothing on a card distinguished a twelve-person
+  // seed startup from a listed multinational, which is one of the first things
+  // anyone actually screens on.
+  ['Pre-seed/Seed', 'stage', /\b(pre-?seed|seed[- ]stage|seed round|just raised our seed)\b/i],
+  ['Series A/B', 'stage', /\bseries [ab]\b/i],
+  ['Series C+', 'stage', /\bseries [c-g]\b|\blate[- ]stage\b|\bgrowth[- ]stage\b/i],
+  ['Public company', 'stage', /\b(publicly traded|nasdaq|nyse|listed company|fortune 500|ftse)\b/i],
+  ['Bootstrapped/Profitable', 'stage', /\b(bootstrapped|profitable since|no outside funding|self-funded)\b/i],
+  ['Unicorn/Scaleup', 'stage', /\b(unicorn|scale-?up|hypergrowth|hyper-growth)\b/i],
+  ['Tiny team (<20)', 'stage', /\b(team of (\d|1\d)\b|fewer than 20|first \d+ (engineers|employees)|small team of)\b/i],
+  ['Big company (1000+)', 'stage', /\b(\d{1,3},\d{3}\+? employees|thousands of employees|global (leader|organi[sz]ation) with)\b/i],
+  ['Agency/Consultancy', 'stage', /\b(consultancy|consulting firm|digital agency|client projects|staffing)\b/i],
+  ['Non-profit/Public good', 'stage', /\b(non-?profit|not-for-profit|ngo|charity|public good|social impact)\b/i],
+
+  // --- benefits -------------------------------------------------------------
+  // Only Equity existed. These are the terms people actually compare offers on.
+  ['4-day week', 'perk', /\b(4-day (work )?week|four-day (work )?week|32-hour week)\b/i],
+  ['Unlimited PTO', 'perk', /\b(unlimited (pto|vacation|holiday|time off)|take as much (vacation|holiday))\b/i],
+  ['Generous leave (30d+)', 'perk', /\b(3[0-9]|[4-9][0-9]) days?\b[^.]{0,30}\b(holiday|vacation|annual leave|pto)\b/i],
+  ['Parental leave', 'perk', /\b(parental leave|maternity|paternity|family leave)\b/i],
+  ['Learning budget', 'perk', /\b(learning (budget|stipend|allowance)|training budget|conference budget|professional development budget|tuition reimbursement)\b/i],
+  ['Home-office stipend', 'perk', /\b(home[- ]office (stipend|budget|allowance)|remote work stipend|equipment budget|wfh stipend)\b/i],
+  ['Health insurance', 'perk', /\b(health (insurance|coverage|care plan)|medical (insurance|coverage)|dental|private healthcare)\b/i],
+  ['Retirement match', 'perk', /\b(401\(?k\)? match|pension (scheme|contribution)|retirement match|superannuation)\b/i],
+  ['Bonus/Commission', 'perk', /\b(annual bonus|performance bonus|commission structure|ote\b|profit[- ]sharing)\b/i],
+  ['Wellness/Gym', 'perk', /\b(gym (membership|stipend)|wellness (budget|stipend|programme|program)|mental health support)\b/i],
+  ['Sabbatical', 'perk', /\bsabbatical\b/i],
+  ['Workation/Work abroad', 'perk', /\b(work from anywhere for|workation|work abroad for|\d+ (weeks|days) from anywhere)\b/i],
+
+  // --- what the office actually costs you -----------------------------------
+  // Remote / Hybrid / On-site is a three-way split derived from the location
+  // string. "Hybrid" covers everything from one day a month to four a week, and
+  // that difference decides whether a job is possible at all.
+  ['Remote-first', 'office', /\b(remote-?first|fully (remote|distributed)|100% remote|all-remote)\b/i],
+  ['1-2 days in office', 'office', /\b((1|2|one|two) days? (a|per) week in (the )?office|(1|2|one|two) days? on-?site)\b/i],
+  ['3+ days in office', 'office', /\b((3|4|5|three|four|five) days? (a|per) week in (the )?office|(3|4|5|three|four|five) days? on-?site|mostly in[- ]office)\b/i],
+  ['Timezone overlap', 'office', /\b(overlap with|core hours|timezone|time zone)[^.]{0,40}\b(cet|est|pst|utc|gmt|hours)\b/i],
+  ['Async-friendly', 'office', /\b(async(hronous)?[- ](first|friendly|communication)|written culture|documentation[- ]first)\b/i],
+  ['Flexible hours', 'office', /\b(flexible (working )?(hours|schedule)|flexitime|flex time|set your own hours)\b/i],
+  ['Relocation expected', 'office', /\b(must relocate|relocation (is )?required|willing to relocate)\b/i],
+
+  // --- stacks the tail was missing -----------------------------------------
+  ['QA/Test automation', 'tech', /\b(test automation|qa engineer|sdet|playwright|cypress|selenium|appium)\b/i],
+  ['Databricks', 'tech', w('databricks')],
+  ['ClickHouse/OLAP', 'tech', /\b(clickhouse|druid|pinot|olap)\b/i],
+  ['Flink/Streaming', 'tech', /\b(flink|beam|stream processing|kinesis|pulsar)\b/i],
+  ['DynamoDB/Cassandra', 'tech', /\b(dynamodb|cassandra|scylla)\b/i],
+  ['RabbitMQ/Queues', 'tech', /\b(rabbitmq|sqs|celery|message queue|nats)\b/i],
+  ['Prometheus/Grafana', 'tech', /\b(prometheus|grafana|opentelemetry|datadog|new relic)\b/i],
+  ['GitHub Actions/Jenkins', 'tech', /\b(github actions|gitlab ci|jenkins|circleci|buildkite)\b/i],
+  ['Ansible/Config mgmt', 'tech', /\b(ansible|puppet|chef|saltstack)\b/i],
+  ['Helm/ArgoCD', 'tech', /\b(helm|argo ?cd|flux ?cd|kustomize|gitops)\b/i],
+  ['Service mesh/eBPF', 'tech', /\b(istio|linkerd|envoy|ebpf|cilium)\b/i],
+  ['Solidity/Web3', 'tech', /\b(solidity|smart contracts?|web3|evm|ethereum)\b/i],
+  ['Unity/Unreal', 'tech', /\b(unity|unreal engine|godot|game engine)\b/i],
+  ['WebGL/Three.js', 'tech', /\b(webgl|three\.js|webgpu|shaders?)\b/i],
+  ['WASM', 'tech', /\b(webassembly|wasm)\b/i],
+  ['Tailwind', 'tech', w('tailwind')],
+  ['Figma', 'tech', w('figma')],
+  ['Salesforce', 'tech', /\b(salesforce|apex|sfdc)\b/i],
+  ['SAP/ERP', 'tech', /\b(sap\b|erp\b|netsuite|workday)\b/i],
+  ['Tableau/Looker/PowerBI', 'tech', /\b(tableau|looker|power ?bi|metabase|superset)\b/i],
+  ['Haskell/FP', 'tech', /\b(haskell|ocaml|f#|clojure|erlang|purescript)\b/i],
+  ['Robotics/ROS', 'tech', /\b(robotics|\bros2?\b|slam\b|motion planning|manipulator)\b/i],
+  ['Hardware/Silicon', 'tech', /\b(fpga|verilog|vhdl|asic|silicon|pcb|rtl design)\b/i],
+  ['Privacy/GDPR', 'tech', /\b(gdpr|ccpa|data privacy|privacy engineering|dpo\b)\b/i],
+  ['SOC2/Compliance', 'tech', /\b(soc ?2|iso ?27001|hipaa|pci[- ]dss|audit readiness)\b/i],
+  ['Growth engineering', 'tech', /\b(growth engineer|a\/b testing at scale|conversion optimi[sz]ation|cro\b|seo\b)\b/i],
+  ['Lifecycle/CRM', 'tech', /\b(lifecycle marketing|crm\b|hubspot|marketo|braze|customer\.io)\b/i],
+  ['Data governance', 'tech', /\b(data governance|data catalog|lineage|master data|data quality framework)\b/i],
+  ['Payments/Ledgers', 'tech', /\b(double[- ]entry|ledger system|payment rails|pci\b|iso ?20022|reconciliation engine)\b/i],
+
+  // --- industries the domain lane was missing -------------------------------
+  ['Crypto/Web3 industry', 'domain', /\b(crypto(currency)?|defi|blockchain company|digital assets|exchange listing)\b/i],
+  ['Insurance', 'domain', /\b(insur(ance|tech)|underwriting|actuarial|claims processing)\b/i],
+  ['Real estate/Proptech', 'domain', /\b(real estate|proptech|property management|mortgage)\b/i],
+  ['Travel/Hospitality', 'domain', /\b(travel (tech|industry)|hospitality|airline|hotel booking|tourism)\b/i],
+  ['Legal tech', 'domain', /\b(legal ?tech|contract lifecycle|e-?discovery|law firm)\b/i],
+  ['HR tech', 'domain', /\b(hr ?tech|payroll platform|applicant tracking|people analytics)\b/i],
+  ['Adtech/Martech', 'domain', /\b(ad ?tech|mar ?tech|programmatic|dsp\b|ssp\b|attribution)\b/i],
+  ['Telecom', 'domain', /\b(telecom(munications)?|5g\b|network operator|isp\b)\b/i],
+  ['Manufacturing/Industrial', 'domain', /\b(manufacturing|industrial automation|factory|plc\b|iiot)\b/i],
+  ['Space/Aerospace', 'domain', /\b(aerospace|satellite|space (industry|systems)|launch vehicle|avionics)\b/i],
+  ['Agritech/Food', 'domain', /\b(agri ?(tech|culture)|food ?tech|farming|crop)\b/i],
+  ['Sports/Fitness', 'domain', /\b(sports (tech|betting)|fitness app|athlete)\b/i],
+
+  // --- language requirements beyond German ----------------------------------
+  ['French required', 'condition', /\b(french (language )?(skills|required|fluent)|français courant|bilingue)\b/i],
+  ['Spanish required', 'condition', /\b(spanish (language )?(skills|required|fluent)|español nativo)\b/i],
+  ['Dutch required', 'condition', /\b(dutch (language )?(skills|required|fluent)|nederlands)\b/i],
+  ['Japanese required', 'condition', /\b(japanese (language )?(skills|required|fluent)|business level japanese)\b/i],
+  ['English only', 'condition', /\b(english (is )?the (only |sole )?(working|company) language|english-only)\b/i],
+
+  // --- conditions the lane was missing --------------------------------------
+  ['Rotational/Weekend', 'condition', /\b(weekend (work|shifts)|rotational shifts|standby duty)\b/i],
+  ['Take-home assignment', 'condition', /\b(take[- ]home (assignment|exercise|task)|paid trial project)\b/i],
+  ['Live coding interview', 'condition', /\b(live coding|pair programming interview|whiteboard interview)\b/i],
+  ['No degree required', 'condition', /\b(no degree required|degree is not required|equivalent practical experience|self-taught welcome)\b/i],
+  ['Degree required', 'condition', /\b(bachelor'?s degree (is )?required|must hold a (bachelor|master)|phd required)\b/i],
+  ['Startup founding role', 'condition', /\b(founding (engineer|team member|designer)|employee number \d|first (engineering )?hire)\b/i],
+  ['Manager of managers', 'condition', /\b(manage(r of|rs reporting)|second[- ]line manager|managing managers)\b/i],
+  ['Individual contributor', 'condition', /\b(individual contributor|ic track|no direct reports)\b/i]
 ];
 
 // Experience floors are worth an opinion of their own -- "8+ years" is a
@@ -1071,6 +1178,15 @@ const RANK_REGULARIZATION = 0.012;
 // A dismissal says "none of this appeals" without saying which part, so it is
 // admitted as a weak negative across the posting's tags rather than a ranking.
 const DISMISS_WEIGHT = 0.25;
+// And its missing opposite. There was no way to say "this one, more like this"
+// without picking apart which tag earned it -- so the only whole-posting verdict
+// the model could learn from was a negative one, and a shortlist of jobs worth
+// applying to taught it nothing at all.
+//
+// Weighted above a dismissal and well below a ranking. You dismiss in bulk on
+// cards you barely read; you save one you actually considered, which is worth
+// more. But it still names no tag, so it cannot rival an explicit order.
+const LIKE_WEIGHT = 0.4;
 // A tag on almost everything cannot discriminate; a tag on almost nothing is not
 // worth a click. Only tags inside this band are offered for ranking.
 const TAG_BAND_MIN = 0.004;
@@ -1097,6 +1213,8 @@ function rankingEvents() {
       });
     } else if (job.dismissed) {
       events.push({ order: [], bottom: [], disliked: pool, pool: pool, weight: DISMISS_WEIGHT });
+    } else if (job.liked) {
+      events.push({ order: [], bottom: [], liked: pool, pool: pool, weight: LIKE_WEIGHT });
     }
   });
   return events;
@@ -1142,6 +1260,8 @@ function eventPairs(event) {
   }
   rest.forEach(tag => disliked.forEach(bad => pairs.push([tag, bad, event.weight * 0.5])));
   disliked.forEach(tag => pairs.push([BASELINE, tag, weight]));
+  // The mirror: a saved posting puts every tag it carries above the anchor.
+  (event.liked || []).forEach(tag => pairs.push([tag, BASELINE, weight]));
   return pairs;
 }
 
@@ -1509,6 +1629,7 @@ async function refreshPostings() {
             ranking: existing.ranking,
             ratedAt: existing.ratedAt,
             hidden: existing.hidden,
+            liked: existing.liked,
             dismissed: existing.dismissed,
             firstSeen: existing.firstSeen
           });
@@ -1649,6 +1770,7 @@ function tagPosting(row) {
     bodyChars: body.length,
     ranking: null,
     ratedAt: '',
+    liked: false,
     dismissed: false,
     hidden: false,
     firstSeen: new Date().toISOString()
@@ -1656,6 +1778,7 @@ function tagPosting(row) {
 }
 
 function hasRanking(job) {
+  if (job.liked) return true;
   const ranking = job.ranking;
   if (!ranking) return false;
   return !!((ranking.order || []).length || (ranking.bottom || []).length ||
@@ -1663,7 +1786,7 @@ function hasRanking(job) {
 }
 
 function rankedJobs() {
-  return Object.values(state.jobs).filter(job => hasRanking(job) || job.dismissed);
+  return Object.values(state.jobs).filter(job => hasRanking(job) || job.dismissed || job.liked);
 }
 
 /* --------------------------------------------------------------- rendering */
@@ -1694,12 +1817,18 @@ function tagChipsHtml(job) {
       (low !== -1 ? '  ·  ranked ' + (low + 1) + ' from the bottom; right-click again to unset'
         : rank !== -1 ? '  ·  right-click to rank it from the bottom instead'
         : '  ·  left-click ranks from the top, right-click from the bottom');
+    // No third gesture. The middot that used to sit inside every chip was a
+    // per-tag "never want this", which is a real distinction from right-click's
+    // "worst thing on THIS posting" -- but three targets on one 80px chip, one
+    // of them a bare dot, read as a stray dash rather than a control. The
+    // whole-posting verdicts are the two buttons in the footer instead.
+    // ranking.disliked stays in the model: dismissals fill it, and stored
+    // records from v2-v5 still carry it, so the ✕ still renders.
     return '<button class="' + cls + '" data-tag="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
       'title="' + esc(title) + '">' +
       (rank !== -1 ? '<b>' + (rank + 1) + '</b> '
-        : low !== -1 ? '<b class="low">↓' + (low + 1) + '</b> ' : '') + esc(tag) +
-      '<span class="chipNo" data-dislike="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
-      'title="Mark as something you do not want">' + (bad ? '✕' : '·') + '</span></button>';
+        : low !== -1 ? '<b class="low">↓' + (low + 1) + '</b> '
+        : bad ? '<b class="low">✕</b> ' : '') + esc(tag) + '</button>';
   }).join('');
   return '<div class="tagline">' + chips + '</div>';
 }
@@ -1713,7 +1842,8 @@ function cardHtml(job, fit, alsoIn) {
   const ranking = job.ranking || { order: [], bottom: [], disliked: [] };
   const done = (ranking.order || []).length + (ranking.bottom || []).length +
                (ranking.disliked || []).length;
-  return '<article class="card" data-card="' + esc(job.id) + '">' +
+  const verdict = job.liked ? ' liked' : job.dismissed ? ' dismissed' : '';
+  return '<article class="card' + verdict + '" data-card="' + esc(job.id) + '">' +
     '<h3><a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.title) + '</a></h3>' +
     '<div class="meta"><strong>' + esc(job.company) + '</strong>' +
       '<span class="dot">' + esc(job.location || job.locationClass) +
@@ -1726,12 +1856,18 @@ function cardHtml(job, fit, alsoIn) {
       '<br>' + esc(why) + '</span></div>' +
     tagChipsHtml(job) +
     '<div class="cardFoot">' +
-      '<span class="muted">' + (done ? done + ' ranked'
+      '<span class="muted">' + (job.liked ? 'saved — counts for all its tags'
+        : job.dismissed ? 'dismissed'
+        : done ? done + ' ranked'
         : 'left-click tags best-first, right-click worst-first') + '</span>' +
-      (job.dismissed
+      (job.dismissed || job.liked
         ? '<button data-restore="' + esc(job.id) + '">undo</button>'
         : (done ? '<button data-clear="' + esc(job.id) + '">clear</button>' : '') +
-          '<button data-hide="' + esc(job.id) + '" title="Weak negative on all its tags, and hides it">not for me</button>') +
+          '<button class="yes" data-like="' + esc(job.id) + '" title="Weak positive on all its ' +
+            'tags at ' + LIKE_WEIGHT + ' weight, and keeps it as a shortlist entry in Rated">' +
+            'more like this</button>' +
+          '<button data-hide="' + esc(job.id) + '" title="Weak negative on all its tags at ' +
+            DISMISS_WEIGHT + ' weight, and hides it">not for me</button>') +
     '</div></article>';
 }
 
@@ -1921,10 +2057,14 @@ function viewRated() {
   const entries = scoredList(rankedJobs().filter(job => passesFilters(job, 'rated')))
     .sort((a, b) => (b.job.ratedAt || '').localeCompare(a.job.ratedAt || ''));
   const dismissed = entries.filter(e => e.job.dismissed).length;
+  const liked = entries.filter(e => e.job.liked).length;
   return '<p class="notice">Everything you have ranked — change anything here and the model ' +
-    'retrains from scratch.' + (dismissed ? ' <span class="muted">' + dismissed +
+    'retrains from scratch.' +
+    (liked ? ' <b>' + liked + ' saved</b> with “more like this” — your shortlist, weak positive at ' +
+      LIKE_WEIGHT + ' across all their tags.' : '') +
+    (dismissed ? ' <span class="muted">' + dismissed +
       ' dismissed with “not for me” (weak negative at ' + DISMISS_WEIGHT +
-      ' across all their tags).</span>' : '') + '</p>' +
+      ').</span>' : '') + '</p>' +
     renderGrid(entries, 'Nothing ranked yet.');
 }
 
@@ -2010,26 +2150,6 @@ async function rankTag(jobId, tag, fromBottom) {
   await saveJobs([job]);
 }
 
-async function dislikeTag(jobId, tag) {
-  const job = state.jobs[jobId];
-  if (!job) return;
-  const ranking = ensureRanking(job);
-  const at = ranking.disliked.indexOf(tag);
-  if (at !== -1) ranking.disliked.splice(at, 1);
-  else {
-    ranking.disliked.push(tag);
-    const ranked = ranking.order.indexOf(tag);
-    if (ranked !== -1) ranking.order.splice(ranked, 1);
-    const low = ranking.bottom.indexOf(tag);
-    if (low !== -1) ranking.bottom.splice(low, 1);
-  }
-  job.ratedAt = new Date().toISOString();
-  invalidateTaste();
-  if (!refreshCard(jobId)) render();
-  renderHeadline();
-  scheduleRescore();
-  await saveJobs([job]);
-}
 
 async function clearRanking(id) {
   const job = state.jobs[id];
@@ -2037,6 +2157,7 @@ async function clearRanking(id) {
   job.ranking = { order: [], bottom: [], disliked: [] };
   job.ratedAt = '';
   job.dismissed = false;
+  job.liked = false;
   job.hidden = false;
   invalidateTaste();
   if (!refreshCard(id)) render();
@@ -2053,6 +2174,7 @@ async function dismissJob(id) {
   const job = state.jobs[id];
   if (!job) return;
   job.dismissed = true;
+  job.liked = false;
   job.hidden = true;
   job.ratedAt = new Date().toISOString();
   invalidateTaste();
@@ -2060,10 +2182,29 @@ async function dismissJob(id) {
   await saveJobs([job]);
 }
 
+// The opposite verdict, and the same refusal to guess: every tag on the posting
+// moves up together. Unlike a dismissal it does NOT hide the card -- the whole
+// point is to keep it, so Rated doubles as the shortlist of jobs worth applying
+// to. It leaves the For You candidate pool the way a ranked posting does.
+async function likeJob(id) {
+  const job = state.jobs[id];
+  if (!job) return;
+  job.liked = true;
+  job.dismissed = false;
+  job.hidden = false;
+  job.ratedAt = new Date().toISOString();
+  invalidateTaste();
+  if (!refreshCard(id)) render();
+  renderHeadline();
+  scheduleRescore();
+  await saveJobs([job]);
+}
+
 async function restoreJob(id) {
   const job = state.jobs[id];
   if (!job) return;
   job.dismissed = false;
+  job.liked = false;
   job.hidden = false;
   job.ranking = { order: [], bottom: [], disliked: [] };
   job.ratedAt = '';
@@ -2274,22 +2415,19 @@ function refreshCard(id) {
 
 document.addEventListener('click', async event => {
   const target = event.target.closest(
-    '[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],[data-repin],' +
+    '[data-tag],[data-clear],[data-like],[data-hide],[data-restore],[data-repin],' +
     '[data-unfilter],.tab');
   if (!target) return;
   if (target.classList.contains('tab')) {
     state.view = target.dataset.view;
     repinOrder();
     render();
-  } else if (target.dataset.dislike) {
-    // The dislike marker sits inside the chip, so it must claim the click
-    // before the chip's own ranking handler sees it.
-    event.stopPropagation();
-    await dislikeTag(target.dataset.job, target.dataset.dislike);
   } else if (target.dataset.tag) {
     await rankTag(target.dataset.job, target.dataset.tag, false);
   } else if (target.dataset.clear) {
     await clearRanking(target.dataset.clear);
+  } else if (target.dataset.like) {
+    await likeJob(target.dataset.like);
   } else if (target.dataset.hide) {
     await dismissJob(target.dataset.hide);
   } else if (target.dataset.restore) {
