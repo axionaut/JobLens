@@ -1,0 +1,737 @@
+[
+  {
+    "company": "Arbeitnow (Europe)",
+    "ats": "arbeitnow",
+    "slug": "all",
+    "region": "Europe"
+  },
+  {
+    "company": "Jobicy (global remote)",
+    "ats": "jobicy",
+    "slug": "all",
+    "region": "Remote"
+  },
+  {
+    "company": "RemoteOK (global remote)",
+    "ats": "remoteok",
+    "slug": "all",
+    "region": "Remote"
+  },
+  {
+    "company": "Remotive (global remote)",
+    "ats": "remotive",
+    "slug": "all",
+    "region": "Remote"
+  },
+  {
+    "company": "1Password",
+    "ats": "ashby",
+    "slug": "1password"
+  },
+  {
+    "company": "Abridge",
+    "ats": "ashby",
+    "slug": "abridge"
+  },
+  {
+    "company": "Adyen",
+    "ats": "greenhouse",
+    "slug": "adyen"
+  },
+  {
+    "company": "Affirm",
+    "ats": "greenhouse",
+    "slug": "affirm"
+  },
+  {
+    "company": "Airbnb",
+    "ats": "greenhouse",
+    "slug": "airbnb"
+  },
+  {
+    "company": "Airtable",
+    "ats": "greenhouse",
+    "slug": "airtable"
+  },
+  {
+    "company": "Amplitude",
+    "ats": "greenhouse",
+    "slug": "amplitude"
+  },
+  {
+    "company": "Anthropic",
+    "ats": "greenhouse",
+    "slug": "anthropic"
+  },
+  {
+    "company": "Asana",
+    "ats": "greenhouse",
+    "slug": "asana"
+  },
+  {
+    "company": "Ashby",
+    "ats": "ashby",
+    "slug": "ashby"
+  },
+  {
+    "company": "Atlan",
+    "ats": "ashby",
+    "slug": "atlan",
+    "region": "India"
+  },
+  {
+    "company": "Attio",
+    "ats": "ashby",
+    "slug": "attio"
+  },
+  {
+    "company": "Baseten",
+    "ats": "ashby",
+    "slug": "baseten"
+  },
+  {
+    "company": "Betterment",
+    "ats": "greenhouse",
+    "slug": "betterment"
+  },
+  {
+    "company": "BlueStone",
+    "ats": "greenhouse",
+    "slug": "bluestone",
+    "region": "India"
+  },
+  {
+    "company": "Braze",
+    "ats": "greenhouse",
+    "slug": "braze"
+  },
+  {
+    "company": "Brex",
+    "ats": "greenhouse",
+    "slug": "brex"
+  },
+  {
+    "company": "Browserbase",
+    "ats": "ashby",
+    "slug": "browserbase"
+  },
+  {
+    "company": "Canva",
+    "ats": "smartrecruiters",
+    "slug": "canva"
+  },
+  {
+    "company": "Carta",
+    "ats": "greenhouse",
+    "slug": "carta"
+  },
+  {
+    "company": "Chime",
+    "ats": "greenhouse",
+    "slug": "chime"
+  },
+  {
+    "company": "CircleCI",
+    "ats": "greenhouse",
+    "slug": "circleci"
+  },
+  {
+    "company": "Clear (ClearTax)",
+    "ats": "greenhouse",
+    "slug": "clear",
+    "region": "India"
+  },
+  {
+    "company": "Clerk",
+    "ats": "ashby",
+    "slug": "clerk"
+  },
+  {
+    "company": "Cloudflare",
+    "ats": "greenhouse",
+    "slug": "cloudflare"
+  },
+  {
+    "company": "Cohere",
+    "ats": "ashby",
+    "slug": "cohere"
+  },
+  {
+    "company": "Coinbase",
+    "ats": "greenhouse",
+    "slug": "coinbase"
+  },
+  {
+    "company": "Coursera",
+    "ats": "greenhouse",
+    "slug": "coursera"
+  },
+  {
+    "company": "CRED",
+    "ats": "lever",
+    "slug": "cred",
+    "region": "India"
+  },
+  {
+    "company": "Cursor",
+    "ats": "ashby",
+    "slug": "cursor"
+  },
+  {
+    "company": "Customer.io",
+    "ats": "greenhouse",
+    "slug": "customerio"
+  },
+  {
+    "company": "Databricks",
+    "ats": "greenhouse",
+    "slug": "databricks"
+  },
+  {
+    "company": "Datadog",
+    "ats": "greenhouse",
+    "slug": "datadog"
+  },
+  {
+    "company": "Decagon",
+    "ats": "ashby",
+    "slug": "decagon"
+  },
+  {
+    "company": "Deepgram",
+    "ats": "ashby",
+    "slug": "deepgram"
+  },
+  {
+    "company": "Descope",
+    "ats": "greenhouse",
+    "slug": "descope"
+  },
+  {
+    "company": "Discord",
+    "ats": "greenhouse",
+    "slug": "discord"
+  },
+  {
+    "company": "Docker",
+    "ats": "ashby",
+    "slug": "docker"
+  },
+  {
+    "company": "Dropbox",
+    "ats": "greenhouse",
+    "slug": "dropbox"
+  },
+  {
+    "company": "Duolingo",
+    "ats": "greenhouse",
+    "slug": "duolingo"
+  },
+  {
+    "company": "Elastic",
+    "ats": "greenhouse",
+    "slug": "elastic"
+  },
+  {
+    "company": "ElevenLabs",
+    "ats": "ashby",
+    "slug": "elevenlabs"
+  },
+  {
+    "company": "Fastly",
+    "ats": "greenhouse",
+    "slug": "fastly"
+  },
+  {
+    "company": "Fi Money",
+    "ats": "lever",
+    "slug": "fi",
+    "region": "India"
+  },
+  {
+    "company": "Figma",
+    "ats": "greenhouse",
+    "slug": "figma"
+  },
+  {
+    "company": "Flexport",
+    "ats": "greenhouse",
+    "slug": "flexport"
+  },
+  {
+    "company": "Freshworks",
+    "ats": "smartrecruiters",
+    "slug": "freshworks",
+    "region": "India"
+  },
+  {
+    "company": "FullStory",
+    "ats": "ashby",
+    "slug": "fullstory"
+  },
+  {
+    "company": "GitLab",
+    "ats": "greenhouse",
+    "slug": "gitlab"
+  },
+  {
+    "company": "GoCardless",
+    "ats": "greenhouse",
+    "slug": "gocardless"
+  },
+  {
+    "company": "Gopuff",
+    "ats": "lever",
+    "slug": "gopuff"
+  },
+  {
+    "company": "Gorgias",
+    "ats": "ashby",
+    "slug": "gorgias"
+  },
+  {
+    "company": "Grafana Labs",
+    "ats": "greenhouse",
+    "slug": "grafanalabs"
+  },
+  {
+    "company": "Greenhouse",
+    "ats": "greenhouse",
+    "slug": "greenhouse"
+  },
+  {
+    "company": "Groww",
+    "ats": "greenhouse",
+    "slug": "groww",
+    "region": "India"
+  },
+  {
+    "company": "Gusto",
+    "ats": "greenhouse",
+    "slug": "gusto"
+  },
+  {
+    "company": "Harvey",
+    "ats": "ashby",
+    "slug": "harvey"
+  },
+  {
+    "company": "Help Scout",
+    "ats": "ashby",
+    "slug": "helpscout"
+  },
+  {
+    "company": "InMobi",
+    "ats": "greenhouse",
+    "slug": "inmobi",
+    "region": "India"
+  },
+  {
+    "company": "Instacart",
+    "ats": "greenhouse",
+    "slug": "instacart"
+  },
+  {
+    "company": "Intercom",
+    "ats": "greenhouse",
+    "slug": "intercom"
+  },
+  {
+    "company": "Iterable",
+    "ats": "ashby",
+    "slug": "iterable"
+  },
+  {
+    "company": "JetBrains",
+    "ats": "greenhouse",
+    "slug": "jetbrains"
+  },
+  {
+    "company": "Justworks",
+    "ats": "greenhouse",
+    "slug": "justworks"
+  },
+  {
+    "company": "Klaviyo",
+    "ats": "greenhouse",
+    "slug": "klaviyo"
+  },
+  {
+    "company": "LangChain",
+    "ats": "ashby",
+    "slug": "langchain"
+  },
+  {
+    "company": "Lattice",
+    "ats": "greenhouse",
+    "slug": "lattice"
+  },
+  {
+    "company": "LaunchDarkly",
+    "ats": "greenhouse",
+    "slug": "launchdarkly"
+  },
+  {
+    "company": "Linear",
+    "ats": "ashby",
+    "slug": "linear"
+  },
+  {
+    "company": "LogRocket",
+    "ats": "lever",
+    "slug": "logrocket"
+  },
+  {
+    "company": "Meesho",
+    "ats": "lever",
+    "slug": "meesho",
+    "region": "India"
+  },
+  {
+    "company": "Mercury",
+    "ats": "greenhouse",
+    "slug": "mercury"
+  },
+  {
+    "company": "Mindtickle",
+    "ats": "lever",
+    "slug": "mindtickle",
+    "region": "India"
+  },
+  {
+    "company": "Miro",
+    "ats": "ashby",
+    "slug": "miro"
+  },
+  {
+    "company": "Mixpanel",
+    "ats": "greenhouse",
+    "slug": "mixpanel"
+  },
+  {
+    "company": "Modal",
+    "ats": "ashby",
+    "slug": "modal"
+  },
+  {
+    "company": "MongoDB",
+    "ats": "greenhouse",
+    "slug": "mongodb"
+  },
+  {
+    "company": "Monzo",
+    "ats": "greenhouse",
+    "slug": "monzo"
+  },
+  {
+    "company": "N26",
+    "ats": "greenhouse",
+    "slug": "n26"
+  },
+  {
+    "company": "Navi",
+    "ats": "ashby",
+    "slug": "navi",
+    "region": "India"
+  },
+  {
+    "company": "Neon",
+    "ats": "ashby",
+    "slug": "neon"
+  },
+  {
+    "company": "Netlify",
+    "ats": "greenhouse",
+    "slug": "netlify"
+  },
+  {
+    "company": "New Relic",
+    "ats": "greenhouse",
+    "slug": "newrelic"
+  },
+  {
+    "company": "Newton School",
+    "ats": "lever",
+    "slug": "newton",
+    "region": "India"
+  },
+  {
+    "company": "Notion",
+    "ats": "ashby",
+    "slug": "notion"
+  },
+  {
+    "company": "Nuro",
+    "ats": "greenhouse",
+    "slug": "nuro"
+  },
+  {
+    "company": "Observe.AI",
+    "ats": "greenhouse",
+    "slug": "observeai",
+    "region": "India"
+  },
+  {
+    "company": "Okta",
+    "ats": "greenhouse",
+    "slug": "okta"
+  },
+  {
+    "company": "OpenAI",
+    "ats": "ashby",
+    "slug": "openai"
+  },
+  {
+    "company": "Oyster",
+    "ats": "ashby",
+    "slug": "oyster"
+  },
+  {
+    "company": "Paytm",
+    "ats": "lever",
+    "slug": "paytm",
+    "region": "India"
+  },
+  {
+    "company": "Pendo",
+    "ats": "greenhouse",
+    "slug": "pendo"
+  },
+  {
+    "company": "Perplexity",
+    "ats": "ashby",
+    "slug": "Perplexity"
+  },
+  {
+    "company": "Pinecone",
+    "ats": "ashby",
+    "slug": "pinecone"
+  },
+  {
+    "company": "Pinterest",
+    "ats": "greenhouse",
+    "slug": "pinterest"
+  },
+  {
+    "company": "Plaid",
+    "ats": "ashby",
+    "slug": "plaid"
+  },
+  {
+    "company": "Postman",
+    "ats": "greenhouse",
+    "slug": "postman"
+  },
+  {
+    "company": "Pylon",
+    "ats": "ashby",
+    "slug": "pylon"
+  },
+  {
+    "company": "Railway",
+    "ats": "ashby",
+    "slug": "railway"
+  },
+  {
+    "company": "Ramp",
+    "ats": "ashby",
+    "slug": "ramp"
+  },
+  {
+    "company": "Reddit",
+    "ats": "greenhouse",
+    "slug": "reddit"
+  },
+  {
+    "company": "Remote",
+    "ats": "greenhouse",
+    "slug": "remote"
+  },
+  {
+    "company": "Render",
+    "ats": "ashby",
+    "slug": "render"
+  },
+  {
+    "company": "Replit",
+    "ats": "ashby",
+    "slug": "replit"
+  },
+  {
+    "company": "Robinhood",
+    "ats": "greenhouse",
+    "slug": "robinhood"
+  },
+  {
+    "company": "Runway",
+    "ats": "ashby",
+    "slug": "runway"
+  },
+  {
+    "company": "Samsara",
+    "ats": "greenhouse",
+    "slug": "samsara"
+  },
+  {
+    "company": "Sanity",
+    "ats": "ashby",
+    "slug": "sanity"
+  },
+  {
+    "company": "Scale AI",
+    "ats": "greenhouse",
+    "slug": "scaleai"
+  },
+  {
+    "company": "Sentry",
+    "ats": "ashby",
+    "slug": "sentry"
+  },
+  {
+    "company": "Sierra",
+    "ats": "ashby",
+    "slug": "sierra"
+  },
+  {
+    "company": "Slice",
+    "ats": "greenhouse",
+    "slug": "slice",
+    "region": "India"
+  },
+  {
+    "company": "SoFi",
+    "ats": "greenhouse",
+    "slug": "sofi"
+  },
+  {
+    "company": "Spotify",
+    "ats": "lever",
+    "slug": "spotify"
+  },
+  {
+    "company": "Springboard",
+    "ats": "greenhouse",
+    "slug": "springboard",
+    "region": "India"
+  },
+  {
+    "company": "Squarespace",
+    "ats": "greenhouse",
+    "slug": "squarespace"
+  },
+  {
+    "company": "Stable",
+    "ats": "ashby",
+    "slug": "stable",
+    "region": "India"
+  },
+  {
+    "company": "Stripe",
+    "ats": "greenhouse",
+    "slug": "stripe"
+  },
+  {
+    "company": "Stytch",
+    "ats": "ashby",
+    "slug": "stytch"
+  },
+  {
+    "company": "Sumo Logic",
+    "ats": "greenhouse",
+    "slug": "sumologic"
+  },
+  {
+    "company": "Swiggy",
+    "ats": "smartrecruiters",
+    "slug": "swiggy",
+    "region": "India"
+  },
+  {
+    "company": "Tailscale",
+    "ats": "greenhouse",
+    "slug": "tailscale"
+  },
+  {
+    "company": "Turtlemint",
+    "ats": "smartrecruiters",
+    "slug": "turtlemint",
+    "region": "India"
+  },
+  {
+    "company": "Twilio",
+    "ats": "greenhouse",
+    "slug": "twilio"
+  },
+  {
+    "company": "Twitch",
+    "ats": "greenhouse",
+    "slug": "twitch"
+  },
+  {
+    "company": "Udemy",
+    "ats": "greenhouse",
+    "slug": "udemy"
+  },
+  {
+    "company": "Unacademy",
+    "ats": "smartrecruiters",
+    "slug": "unacademy",
+    "region": "India"
+  },
+  {
+    "company": "Unify",
+    "ats": "ashby",
+    "slug": "unify"
+  },
+  {
+    "company": "Vanta",
+    "ats": "ashby",
+    "slug": "vanta"
+  },
+  {
+    "company": "Vercel",
+    "ats": "greenhouse",
+    "slug": "vercel"
+  },
+  {
+    "company": "Warp",
+    "ats": "ashby",
+    "slug": "warp"
+  },
+  {
+    "company": "Waymo",
+    "ats": "greenhouse",
+    "slug": "waymo"
+  },
+  {
+    "company": "Wealthfront",
+    "ats": "lever",
+    "slug": "wealthfront"
+  },
+  {
+    "company": "Weaviate",
+    "ats": "ashby",
+    "slug": "weaviate"
+  },
+  {
+    "company": "Webflow",
+    "ats": "greenhouse",
+    "slug": "webflow"
+  },
+  {
+    "company": "Whatfix",
+    "ats": "smartrecruiters",
+    "slug": "whatfix",
+    "region": "India"
+  },
+  {
+    "company": "Wise",
+    "ats": "greenhouse",
+    "slug": "wise"
+  },
+  {
+    "company": "WorkOS",
+    "ats": "ashby",
+    "slug": "workos"
+  }
+]

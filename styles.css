@@ -1,0 +1,106 @@
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel2:#1c2330; --line:#2a3140;
+  --ink:#e6edf3; --muted:#8b98a8; --accent:#4c9aff; --good:#3fb950; --bad:#f85149;
+  --warm:#d29922; --radius:12px;
+}
+*{box-sizing:border-box}
+/* A class that sets `display` outbids the browser's own [hidden] rule, because
+   author styles beat the UA stylesheet at equal specificity. Without this,
+   .modal{display:grid} and .progress{display:flex} stay on screen no matter what
+   el.hidden is set to -- the close button runs, the attribute flips, and nothing
+   moves. Any element toggled with .hidden needs this to be honoured. */
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button{font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:7px 13px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#08121f;font-weight:600}
+button[disabled]{opacity:.5;cursor:default}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+textarea{width:100%;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.muted{color:var(--muted)}
+
+#appHeader{padding:14px 20px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{font-size:19px;font-weight:700;letter-spacing:.2px}
+.badge{font-size:11px;font-weight:600;color:var(--muted);background:var(--panel2);
+  border:1px solid var(--line);border-radius:999px;padding:2px 8px;vertical-align:middle}
+.tabs{display:flex;gap:6px;margin:11px 0 4px;flex-wrap:wrap}
+.tab{background:transparent;border-color:transparent;color:var(--muted);padding:6px 12px}
+.tab.active{background:var(--panel2);border-color:var(--line);color:var(--ink);font-weight:600}
+.headline{color:var(--muted);font-size:12.5px;min-height:18px}
+
+.deck{position:sticky;top:0;z-index:20;display:flex;gap:12px;align-items:end;flex-wrap:wrap;
+  padding:11px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.deck label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
+.deckActions{display:flex;gap:8px;margin-left:auto}
+.progress{width:100%;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.bar{flex:1;height:5px;background:var(--panel2);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+
+#main{padding:18px 20px 60px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.empty{color:var(--muted);padding:40px 0;text-align:center}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px;display:flex;flex-direction:column;gap:9px}
+.card h3{margin:0;font-size:15px;line-height:1.35}
+.card h3 a{color:var(--ink);text-decoration:none}
+.card h3 a:hover{color:var(--accent)}
+.meta{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.meta .dot::before{content:"·";margin-right:8px}
+
+.fit{display:flex;align-items:center;gap:9px}
+.fitPct{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.fitPct.hi{color:var(--good)} .fitPct.mid{color:var(--warm)} .fitPct.lo{color:var(--muted)}
+.fitWhy{font-size:11.5px;color:var(--muted)}
+
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--muted);cursor:pointer}
+.chip.pos{border-color:#1f5c34;background:#122b1c;color:#7ee2a0}
+.chip.neg{border-color:#5c2320;background:#2b1414;color:#f3a29d}
+
+.facets{margin-top:auto;padding-top:9px;border-top:1px solid var(--line);
+  display:grid;gap:3px}
+.facetRow{display:grid;grid-template-columns:62px auto 1fr;align-items:center;gap:8px}
+.facetName{font-size:11px;color:var(--muted)}
+.facetStars{display:flex;gap:1px}
+.facetNote{font-size:10.5px;color:#5c6675}
+.facetNote.mine{color:var(--warm)}
+.cardFoot{display:flex;gap:6px;justify-content:flex-end;padding-top:9px}
+.cardFoot button{padding:4px 9px;font-size:11.5px}
+.star{background:transparent;border:none;padding:1px 2px;font-size:14px;line-height:1;
+  color:#3a4353;cursor:pointer}
+.star:hover,.star.on{color:var(--warm)}
+.star.guess{color:#3f4a5c}
+.cardActions{margin-left:auto;display:flex;gap:6px}
+.cardActions button{padding:4px 9px;font-size:11.5px}
+
+.modal{position:fixed;inset:0;background:#000a;display:grid;place-items:center;z-index:100;padding:20px}
+.modalBody{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:22px;width:min(720px,100%);max-height:88vh;overflow:auto}
+.modalBody h2{margin:0 0 6px;font-size:18px}
+.drop{margin-top:10px;border:1.5px dashed var(--line);border-radius:10px;padding:18px;
+  text-align:center;color:var(--muted);font-size:12.5px}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.modalActions{display:flex;gap:8px;margin-top:14px}
+.modalActions button:last-child{margin-left:auto}
+
+table.brain{width:100%;border-collapse:collapse;font-size:13px}
+table.brain th,table.brain td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+table.brain th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase}
+td.w{font-variant-numeric:tabular-nums;text-align:right}
+td.w.pos{color:#7ee2a0} td.w.neg{color:#f3a29d}
+
+.dismissed{color:var(--bad);font-weight:600}
+
+.salary{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:13px;cursor:help}
+.salary strong{font-size:15px;color:var(--good);font-variant-numeric:tabular-nums}
+.salary .muted{font-size:11.5px}
+.pppTag{font-size:9.5px;font-weight:700;letter-spacing:.5px;padding:1px 5px;border-radius:4px;
+  border:1px solid var(--line);color:var(--muted);background:var(--panel2)}
+
+.notice{margin:0 0 14px;padding:10px 13px;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel);color:var(--muted);font-size:12.5px;line-height:1.55}

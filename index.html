@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JobLens</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="appHeader">
+  <div class="brand">JobLens <span id="versionBadge" class="badge">v1</span></div>
+  <nav class="tabs">
+    <button class="tab" data-view="foryou">For You</button>
+    <button class="tab" data-view="rate">Rate</button>
+    <button class="tab" data-view="rated">Rated</button>
+    <button class="tab" data-view="pool">Pool</button>
+    <button class="tab" data-view="tags">Tag Brain</button>
+  </nav>
+  <div class="headline" id="headline"></div>
+</header>
+
+<section id="deck" class="deck">
+  <label>Search <input id="fText" type="search" placeholder="title, company, tag"></label>
+  <label>Seniority <select id="fSeniority"></select></label>
+  <label>Location <select id="fLocation"></select></label>
+  <label>Salary <select id="fSalary">
+    <option value="has">Has salary only</option>
+    <option value="25">≥ ₹25L PPP</option>
+    <option value="40">≥ ₹40L PPP</option>
+    <option value="60">≥ ₹60L PPP</option>
+    <option value="100">≥ ₹1Cr PPP</option>
+    <option value="">Any (incl. undisclosed)</option>
+  </select></label>
+  <label>Posted <select id="fAge">
+    <option value="0">Any time</option><option value="1">24 hours</option>
+    <option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option>
+  </select></label>
+  <div class="deckActions">
+    <button id="btnRefresh" class="primary">Refresh postings</button>
+    <button id="btnResume">Resume</button>
+    <button id="btnStop" hidden>Stop</button>
+  </div>
+  <div id="progress" class="progress" hidden><div class="bar"><i></i></div><span id="progressText"></span></div>
+</section>
+
+<main id="main"></main>
+
+<div id="resumeModal" class="modal" hidden>
+  <div class="modalBody">
+    <h2>Resume (optional)</h2>
+    <p class="muted">Entirely optional — rating postings is what teaches the model, and it works
+      fine if you never add this. A resume only gives it something to go on before you have rated
+      anything, and it fades as your ratings accumulate. It never leaves this browser: the text is
+      converted to weights on save and is not itself stored. Paste it, or drop a PDF/txt file.</p>
+    <textarea id="resumeText" rows="14" placeholder="Paste your resume text here…"></textarea>
+    <div id="resumeDrop" class="drop">Drop a .pdf / .txt / .md file here</div>
+    <div id="resumeSummary" class="muted"></div>
+    <div class="modalActions">
+      <button id="resumeSave" class="primary">Save</button>
+      <button id="resumeClear">Clear</button>
+      <button id="resumeClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
