@@ -113,6 +113,20 @@ The ceiling is right for a skill tag and wrong for the dimensions you opened a
 job board to filter on: `Mid` sits on 48% of postings and `On-site` on 86%, and
 ranking `Remote` above `₹60L–1Cr PPP` is worth saying anyway.
 
+### Role words from the title
+
+The title is the densest signal on a posting and the ontology could not see it:
+six "… Innovation …" roles on one screen and `innovation` was in no lane. So
+titles — and **only** titles — are mined for keywords and bigrams
+(`Model Evaluation`, `Innovation Lab`, `Ad Formats`), shown with a dashed border.
+
+The closed vocabulary exists because mining **body** prose produced garbage (the
+LA Fair Chance disclaimer in 30% of postings, export-control notices, mangled
+German). A title has none of that: five to eight words written to say what the
+role is. And the frequency band still filters — of 238 role words derived from
+16,233 postings, 71 are inside it. A team codename falls under the floor,
+`engineer` goes over the ceiling.
+
 ### 203 tags across nine lanes
 
 Tech, role, domain, conditions, **company stage**, **benefits**, **office**,

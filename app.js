@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -155,11 +155,20 @@ async function loadState() {
   // stars. Neither maps onto a tag ORDER -- knowing you gave a job 4 stars says
   // nothing about which of its tags earned them -- so the old scores are
   // dropped rather than invented into a ranking. The postings themselves stay.
+  const migrated = [];
   jobs.forEach(job => {
     delete job.rating;
     delete job.ratings;
     if (!job.ranking) job.ranking = { order: [], bottom: [], disliked: [] };
     if (!job.ranking.bottom) job.ranking.bottom = [];
+    // Role words arrived after these records were written, and the title they
+    // were mined from is already stored -- so they are re-derived on load
+    // rather than requiring a refetch of 16,000 postings.
+    if (!job.titleTags) {
+      job.titleTags = titleTags(job.title);
+      job.tags = Array.from(new Set((job.tags || []).concat(job.titleTags)));
+      migrated.push(job);
+    }
     state.jobs[job.id] = job;
   });
   const kv = await new Promise((res, rej) => {
@@ -170,6 +179,9 @@ async function loadState() {
     state.settings = { ...state.settings, ...(kv.settings || {}) };
     state.meta = { ...state.meta, ...(kv.meta || {}) };
   }
+  // Written back so the derivation happens once, not on every load. Failing to
+  // persist is harmless -- the next load simply derives them again.
+  if (migrated.length) await saveJobs(migrated);
 }
 
 async function saveJobs(records) {
@@ -777,7 +789,8 @@ function salaryHtml(job) {
 const TAG_CATEGORIES = {
   work: 'Work', tech: 'Tech', domain: 'Domain', seniority: 'Seniority',
   experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions',
-  family: 'Role family', stage: 'Company', perk: 'Benefits', office: 'Office'
+  family: 'Role family', stage: 'Company', perk: 'Benefits', office: 'Office',
+  title: 'Role words'
 };
 
 const w = body => new RegExp('(^|[^a-z0-9+#.])' + body + '([^a-z0-9+#]|$)', 'i');
@@ -1148,6 +1161,125 @@ const STOPWORD_SOURCE = 'a an the and or but if then else of for for to in on at
   'looking join hiring people world every make making like well right best good ensure drive support high level';
 const STOPWORDS = new Set(STOPWORD_SOURCE.split(/\s+/));
 
+// Role keywords, mined from the TITLE only.
+//
+// 2.1 closed the tag vocabulary because mining produced garbage -- but reread
+// what it was mining: BODY prose. The three worst offenders were the Los
+// Angeles Fair Chance Ordinance disclaimer, an export-control notice and
+// ASCII-mangled German boilerplate. All three are legal text that appears in
+// thousands of descriptions and describes no job.
+//
+// A title has none of that. It is five to eight words, written by a human to
+// say what the role is, and it never contains a disclaimer. It is also the part
+// a person reads first and the part the ontology could not see: "Staff Product
+// Designer, Design Innovation" and "Product Marketing Leader - Innovation &
+// Experimentation" shared the single most informative word on either card, and
+// `innovation` was in no lane at all.
+//
+// Two things keep this from reopening the old hole:
+//
+//  - Titles only. Never the body.
+//  - The frequency band (2.2) still applies, so a team name like `twotwenty`
+//    falls under the floor and a word like `engineer` is over the ceiling.
+//    Neither is ever offered. The band does the work a curated list would.
+//
+// Stopped here: grammatical filler, level markers and roman numerals, and the
+// words that already ARE a seniority tag, because a chip saying `Senior` next
+// to a chip saying `senior` is not two opinions. Family words (engineer,
+// designer, scientist) are deliberately NOT stopped -- `engineer` disappears
+// over the 30% ceiling on its own, while `designer` may well sit in band and be
+// worth a click.
+const TITLE_STOP = new Set((
+  'a an the and or of for to in on at by with from as is new using role position ' +
+  'senior sr jr junior staff principal distinguished fellow lead leader director ' +
+  'vp president head chief manager management intern internship graduate grad entry ' +
+  'level mid associate ii iii iv vi vii viii ix xi xii apprentice trainee ' +
+  'i ' +
+  'remote hybrid onsite office based full part time contract temporary permanent ' +
+  'fte hire hiring opening vacancy job jobs career careers team teams group ' +
+  'department dept division unit org organisation organization ' +
+  'various multiple general generalist other others tbd req'
+).split(/\s+/));
+
+// Kept despite being short: these are real role words, and a bare length filter
+// would drop every one of them.
+const TITLE_SHORT_OK = new Set(['ai', 'ml', 'ux', 'ui', 'qa', 'bi', 'ds', 'se', 'it', 'hr', 'ad',
+  'go', 'ios', 'api', 'sre', 'llm', 'nlp', 'cv', 'rl', 'gtm', 'seo', 'crm', 'erp', 'iot',
+  'devops', 'sdk', 'cad', 'ehr', 'gis', 'rf', 'fp&a', 'm&a', 'pm', 'tpm', 'em']);
+
+// Segments, not one flat word list. A title is punctuated for a reason:
+// "Staff Product Designer, Design Innovation" is two phrases, and a bigram
+// spanning the comma produced "Designer design". "Researcher, Training -
+// London" produced "Training london", pulling a city into the role lane that
+// the region tag already covers. Bigrams are formed only WITHIN a segment.
+//
+// Parenthesised suffixes usually carry the real specialisation -- "(Innovation
+// Lab)", "(Trust & Safety)" -- so brackets become segment breaks and their
+// contents are kept.
+function titleSegments(title) {
+  return String(title || '')
+    .toLowerCase()
+    .split(/[,;:|/()\[\]{}&–—-]+|\s+[-–—]\s+/)
+    // Dropped words break adjacency instead of closing over the gap. Without
+    // this, "Innovative Ad Formats" yielded the bigram "Innovative Formats" --
+    // a phrase that is not in the title. A dropped word becomes null and the
+    // bigram pass simply does not cross it.
+    .map(segment => segment
+      .split(/[^a-z0-9+#.]+/)
+      .map(word => word.replace(/^[.]+|[.]+$/g, ''))
+      .map(word => titleWordKept(word) ? word : null))
+    .filter(words => words.some(Boolean));
+}
+
+// Location words are dropped: region and location mode already have their own
+// lanes, so "Researcher, Training - London" should not put London in the role
+// lane as well. regionOf is the same matcher those lanes use, which keeps the
+// two definitions of "this word is a place" from drifting apart.
+function titleWordKept(word) {
+  if (!word) return false;
+  if (TITLE_STOP.has(word)) return false;
+  if (word.length <= 2 && !TITLE_SHORT_OK.has(word)) return false;
+  return !regionOf(word);
+}
+
+function titleWords(title) {
+  return titleSegments(title)
+    .reduce((all, words) => all.concat(words.filter(Boolean)), []);
+}
+
+// Being short is not the same as being an acronym: `ad` is a word and was
+// rendering as "AD". Kept as two lists so the display rule does not have to
+// guess from length.
+const TITLE_ACRONYMS = new Set(['ai', 'ml', 'ux', 'ui', 'qa', 'bi', 'ds', 'it', 'hr', 'api',
+  'sre', 'llm', 'llms', 'nlp', 'cv', 'rl', 'gtm', 'seo', 'crm', 'erp', 'iot', 'sdk', 'cad',
+  'ehr', 'gis', 'rf', 'pm', 'tpm', 'em', 'sdet', 'saas', 'b2b', 'b2c', 'etl', 'hpc', 'ar',
+  'vr', 'xr', 'cs', 'qc']);
+const TITLE_CASED = { ios: 'iOS', macos: 'macOS', tvos: 'tvOS', devops: 'DevOps',
+  mlops: 'MLOps', 'fp&a': 'FP&A', javascript: 'JavaScript', typescript: 'TypeScript',
+  nodejs: 'Node.js', postgresql: 'PostgreSQL', graphql: 'GraphQL', kubernetes: 'Kubernetes' };
+
+function titleCase(word) {
+  if (TITLE_CASED[word]) return TITLE_CASED[word];
+  if (TITLE_ACRONYMS.has(word)) return word.toUpperCase();
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+// Unigrams plus adjacent bigrams. A bigram is what actually names a
+// specialisation -- "model evaluation", "innovation lab", "ad formats" -- and
+// the band drops the ones too rare to be worth a click.
+function titleTags(title) {
+  const out = [];
+  titleSegments(title).forEach(words => {
+    words.forEach((word, i) => {
+      if (!word) return;
+      out.push(titleCase(word));
+      const next = words[i + 1];
+      if (next) out.push(titleCase(word) + ' ' + titleCase(next));
+    });
+  });
+  return Array.from(new Set(out));
+}
+
 /* --------------------------------------------------------- preference model */
 
 // You rank TAGS, not jobs.
@@ -1198,7 +1330,7 @@ const TAG_BAND_MAX = 0.30;
 function rankingEvents() {
   const events = [];
   Object.values(state.jobs).forEach(job => {
-    const pool = (job.tags || []).filter(tagIsRankable);
+    const pool = rankableTags(job);
     const ranking = job.ranking;
     const explicit = ranking && ((ranking.order || []).length ||
                                  (ranking.bottom || []).length ||
@@ -1311,11 +1443,24 @@ function tagModel() {
 // changes. Everything below reads scores through jobScore, so this is the only
 // place staleness could enter.
 let scoreCache = new Map();
+let titleTagCache = null;
 
 function invalidateTaste() {
   tagUtilityCache = null;
   tagFrequencyCache = null;
+  titleTagCache = null;
   scoreCache = new Map();
+}
+
+// Which tags came from a title rather than the ontology. Needed to label them
+// and to cap how many land on one card.
+function titleTagSetOf() {
+  if (titleTagCache) return titleTagCache;
+  const set = new Set();
+  Object.values(state.jobs).forEach(job =>
+    (job.titleTags || []).forEach(tag => set.add(tag)));
+  titleTagCache = set;
+  return set;
 }
 
 function tagUtility(tag) {
@@ -1339,13 +1484,35 @@ function tagCoverage(tag) {
   return tagFrequency().counts.get(tag) || 0;
 }
 
+// Title mining roughly doubles the tags on a posting, and a card carrying 30
+// chips is not a thing anyone ranks. Only the role words are capped, and the
+// rarest survive: within the band, a word on 80 postings separates the corpus
+// far better than one on 4,000.
+//
+// This is the single definition of "what this card offers". rankingEvents uses
+// it too, because a dismissal must never be read as an opinion about a tag the
+// card did not draw -- the bug 3.1 fixed.
+const TITLE_TAGS_PER_CARD = 6;
+
+function rankableTags(job) {
+  const rankable = (job.tags || []).filter(tagIsRankable);
+  const fromTitle = titleTagSetOf();
+  const titles = rankable.filter(tag => fromTitle.has(tag));
+  if (titles.length <= TITLE_TAGS_PER_CARD) return rankable;
+  const keep = new Set(titles
+    .slice()
+    .sort((a, b) => tagCoverage(a) - tagCoverage(b))
+    .slice(0, TITLE_TAGS_PER_CARD));
+  return rankable.filter(tag => !fromTitle.has(tag) || keep.has(tag));
+}
+
 // A posting scores as the mean utility of the tags it carries, which keeps a
 // twenty-tag posting from beating a six-tag one on volume alone. The resume
 // still contributes, fading as real rankings arrive.
 function jobScore(job) {
   const hit = scoreCache.get(job.id);
   if (hit) return hit;
-  const tags = (job.tags || []).filter(tagIsRankable);
+  const tags = rankableTags(job);
   const model = tagModel();
   let out;
   if (!tags.length) out = { score: 0, known: 0, rankable: 0 };
@@ -1732,6 +1899,7 @@ function tagCategory(tag) {
   if (/PPP$/.test(tag)) return 'pay';
   if (/years$/.test(tag)) return 'experience';
   if (FAMILY_NAMES.indexOf(tag) !== -1 || tag === 'Other') return 'family';
+  if (titleTagSetOf().has(tag)) return 'title';
   return 'seniority';
 }
 
@@ -1757,7 +1925,8 @@ function tagPosting(row) {
   const years = experienceTag(body);
   if (years) derived.push(years);
 
-  const tags = Array.from(new Set(ontologyTags(haystack).concat(derived)));
+  const fromTitle = titleTags(row.title);
+  const tags = Array.from(new Set(ontologyTags(haystack).concat(derived, fromTitle)));
   return {
     id: row.entry.ats + ':' + row.entry.slug + ':' + row.key,
     company: row.company || row.entry.company,
@@ -1772,6 +1941,7 @@ function tagPosting(row) {
     seniority: seniority,
     salary: salary,
     tags: tags,
+    titleTags: fromTitle,
     excerpt: body.slice(0, 320),
     bodyChars: body.length,
     ranking: null,
@@ -1817,7 +1987,7 @@ function tagChipsHtml(job) {
   const order = ranking.order || [];
   const bottom = ranking.bottom || [];
   const disliked = ranking.disliked || [];
-  const rankable = (job.tags || []).filter(tagIsRankable);
+  const rankable = rankableTags(job);
   if (!rankable.length) return '<div class="tagline muted">No rankable tags on this posting.</div>';
   const model = tagModel();
   const chips = rankable.map(tag => {
@@ -1826,9 +1996,11 @@ function tagChipsHtml(job) {
     const bad = disliked.indexOf(tag) !== -1;
     const utility = tagUtility(tag);
     const lean = utility > 0.05 ? ' lean-up' : utility < -0.05 ? ' lean-down' : '';
-    const cls = rank !== -1 ? 'chip ranked' : low !== -1 ? 'chip bottom'
-      : bad ? 'chip disliked' : 'chip' + lean;
-    const title = tag + ' — on ' + tagCoverage(tag).toLocaleString() + ' postings' +
+    const fromTitle = titleTagSetOf().has(tag) ? ' fromTitle' : '';
+    const cls = (rank !== -1 ? 'chip ranked' : low !== -1 ? 'chip bottom'
+      : bad ? 'chip disliked' : 'chip' + lean) + fromTitle;
+    const title = tag + (fromTitle ? ' (role word from the title)' : '') +
+      ' — on ' + tagCoverage(tag).toLocaleString() + ' postings' +
       (model.pairs ? ', learned score ' + utility.toFixed(2) : '') +
       (low !== -1 ? '  ·  ranked ' + (low + 1) + ' from the bottom; right-click again to unset'
         : rank !== -1 ? '  ·  right-click to rank it from the bottom instead'
@@ -2061,7 +2233,7 @@ function viewRate() {
   const scored = scoredList(candidates);
   const model = tagModel();
   scored.forEach(entry => {
-    const tags = (entry.job.tags || []).filter(tagIsRankable);
+    const tags = rankableTags(entry.job);
     const unseen = tags.filter(tag => !(tag in model.utility)).length;
     entry.novelty = unseen + Math.min(tags.length, 12) * 0.1;
   });
@@ -2125,8 +2297,11 @@ function viewTagBrain() {
   viewHint = status.pairs.toLocaleString() + ' comparisons from ' + status.events +
     ' posting' + (status.events === 1 ? '' : 's') + ' · a score is relative, it only means this ' +
     'tag beat or lost to others you ranked';
-  return
-    (wanted.length ? '<h3>What you want</h3>' + table(wanted.slice(0, 40)) : '') +
+  // On one line deliberately. Lifting the notice out into viewHint left a bare
+  // `return` with the expression on the next line, and automatic semicolon
+  // insertion turned it into `return;` -- Tag Brain rendered empty in v7 and
+  // nothing threw.
+  return (wanted.length ? '<h3>What you want</h3>' + table(wanted.slice(0, 40)) : '') +
     (unwanted.length ? '<h3>What you do not</h3>' + table(unwanted.slice(0, 25)) : '');
 }
 

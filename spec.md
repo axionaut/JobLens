@@ -407,3 +407,89 @@ re-sort button inside it became useful.
 Views now set `viewHint` and return only their grid. `render()` paints the hint
 and the re-sort offer into `#topbar`, which does not scroll. The re-sort button
 sits at the right end of the stats row.
+
+## 8. Role keywords from the title
+
+### 8.1 The most informative word on the card was in no lane
+
+Eight postings on one screen: "Product Marketing Leader - Innovation &
+Experimentation", "Staff Product Designer, Design Innovation", "Innovation
+Product Manager", "Sr. Director, Engineering - TwoTwenty (Innovation Lab)",
+"Director, Marketing Technology & Innovation", "Data Engineer, People
+Innovation Labs". The word they share is the single most useful thing about any
+of them, and `innovation` was in no lane at all -- not the ontology, not a
+derived facet. The title was read only by `FAMILY_RULES` and `SENIORITY_RULES`,
+which reduce it to one of eighteen families and one of seven levels and throw
+the rest away.
+
+### 8.2 Why this does not reopen the hole 2.1 closed
+
+2.1 closed the vocabulary because mining produced garbage. Reread what it was
+mining: **body** prose. The three worst offenders were the Los Angeles Fair
+Chance Ordinance disclaimer (~30% of postings), an export-control notice, and
+ASCII-mangled German boilerplate. All three are legal text that appears in
+thousands of descriptions and describes no job.
+
+A title has none of that failure mode. Five to eight words, written by a person
+to say what the role is, never containing a disclaimer.
+
+Two constraints keep it honest:
+
+- **Titles only.** Never the body.
+- **The band still applies.** Measured over 16,233 postings: 238 distinct role
+  words derived, **71** inside the band. A team codename like `twotwenty` falls
+  under the 0.4% floor; `engineer` is over the 30% ceiling. Neither is ever
+  offered. The band does the curation a hand-written list would.
+
+### 8.3 What gets dropped
+
+Grammatical filler; level markers and roman numerals; and the words that already
+ARE a seniority tag (`senior`, `staff`, `director`, `manager`...), because a chip
+saying `Senior` beside a chip saying `senior` is not two opinions.
+
+Family words (`engineer`, `designer`, `scientist`) are deliberately NOT stopped:
+`engineer` disappears over the ceiling on its own, while `designer` sits in band
+and is worth a click.
+
+Place names are dropped via `regionOf` -- the same matcher the region lane uses,
+so the two definitions of "this word is a place" cannot drift. "Researcher,
+Training - London" would otherwise have put London in the role lane as well.
+
+### 8.4 Segments, not a flat word list
+
+A title is punctuated for a reason. Bigrams form only WITHIN a segment, and a
+dropped word breaks adjacency rather than closing over the gap:
+
+- "Staff Product Designer, Design Innovation" gave `Designer Design` across the
+  comma.
+- "Researcher, Training - London" gave `Training London`.
+- "Innovative Ad Formats" gave `Innovative Formats` -- a phrase not in the title
+  -- because `ad` was dropped for length and its neighbours joined up.
+
+Bigrams are what actually name a specialisation: `Model Evaluation`,
+`Innovation Lab`, `Design Innovation`, `Ad Formats`.
+
+### 8.5 One definition of "what this card offers"
+
+Title mining roughly doubles the tags on a posting, so `TITLE_TAGS_PER_CARD` (6)
+caps the role words per card, keeping the RAREST -- within the band, a word on 80
+postings separates the corpus far better than one on 4,000. Median rankable
+chips per card went 9 -> 10, max 12.
+
+`rankableTags(job)` is now the single definition, used by the chips, the scorer,
+the novelty ranking AND `rankingEvents`. That last one matters: a capped tag is
+rankable but not drawn, and if events had kept using the raw band filter a
+dismissal would have voted on tags the card never showed -- exactly the bug 3.1
+fixed.
+
+### 8.6 Migration
+
+Stored records predate the lane, and the title they were mined from is already
+on the record, so `titleTags` is re-derived on load and written back once. No
+refetch of 16,233 postings.
+
+### 8.7 A v7 regression this caught
+
+`viewTagBrain` had `return` alone on its line with the expression below it, left
+behind when 7.4 lifted the notice out into `viewHint`. Automatic semicolon
+insertion made it `return;`, so Tag Brain rendered empty in v7 and nothing threw.
