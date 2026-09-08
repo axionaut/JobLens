@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 1;
+const APP_VERSION = 2;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -151,12 +151,14 @@ async function loadState() {
   // the role facet, because a single star on a job card was overwhelmingly a
   // judgement of the work -- and because spreading it across all five would
   // invent four opinions the user never gave.
+  // Records from before tag ranking carried a single star, then five facet
+  // stars. Neither maps onto a tag ORDER -- knowing you gave a job 4 stars says
+  // nothing about which of its tags earned them -- so the old scores are
+  // dropped rather than invented into a ranking. The postings themselves stay.
   jobs.forEach(job => {
-    if (!job.ratings) {
-      job.ratings = { role: 0, level: 0, company: 0, location: 0, salary: 0 };
-      if (Number(job.rating || 0) > 0) job.ratings.role = Number(job.rating);
-    }
     delete job.rating;
+    delete job.ratings;
+    if (!job.ranking) job.ranking = { order: [], disliked: [] };
     state.jobs[job.id] = job;
   });
   const kv = await new Promise((res, rej) => {
@@ -668,12 +670,14 @@ function formatSource(salary) {
 function salaryBand(pppRange) {
   if (!pppRange) return '';
   const mid = (pppRange.min + pppRange.max) / 2;
-  if (mid >= 15000000) return 'pay:1.5Cr+ ppp';
-  if (mid >= 10000000) return 'pay:1-1.5Cr ppp';
-  if (mid >= 6000000) return 'pay:60L-1Cr ppp';
-  if (mid >= 4000000) return 'pay:40-60L ppp';
-  if (mid >= 2500000) return 'pay:25-40L ppp';
-  return 'pay:under-25L ppp';
+  // Labelled as a person reads them, because these are chips you rank against
+  // Kubernetes and Remote, not internal keys.
+  if (mid >= 15000000) return '₹1.5Cr+ PPP';
+  if (mid >= 10000000) return '₹1–1.5Cr PPP';
+  if (mid >= 6000000) return '₹60L–1Cr PPP';
+  if (mid >= 4000000) return '₹40–60L PPP';
+  if (mid >= 2500000) return '₹25–40L PPP';
+  return 'under ₹25L PPP';
 }
 
 // Plausible annual pay in the currency's own units, derived from the PPP table
@@ -748,35 +752,183 @@ function salaryHtml(job) {
     '<span class="muted">' + esc(formatSource(salary)) + ' ' + esc(salary.currency) + '</span></div>';
 }
 
+/* ---------------------------------------------------------------- ontology */
+
+// Tags are a CLOSED, curated vocabulary, not phrases mined from the text.
+//
+// The mined version could not support ranking. Across 2,499 postings its most
+// common tags were "fair chance", "angeles county" and "chance ordinance" -- the
+// Los Angeles Fair Chance Ordinance disclaimer, in 30% of postings -- alongside
+// "computer hardware" from an export-control notice and mangled German
+// boilerplate ("unterst tzung"). Only 94 of 10,841 distinct tags fell in a
+// frequency band wide enough to be worth an opinion; 10,173 appeared in under
+// 0.2% of jobs, so rating one would have moved four postings.
+//
+// A closed vocabulary fixes both ends at once: boilerplate can never enter
+// because nothing outside this list is ever emitted, and every entry here is
+// something a person can actually hold a preference about. The cost is that a
+// skill nobody listed is invisible, which is the right trade -- a missing tag is
+// recoverable by editing this list, a corpus of junk tags is not.
+//
+// `match` is tested against the lowercased title + description. `derive` tags
+// come from structured fields instead and are added in tagPosting.
+
+const TAG_CATEGORIES = {
+  work: 'Work', tech: 'Tech', domain: 'Domain', seniority: 'Seniority',
+  experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions'
+};
+
+const w = body => new RegExp('(^|[^a-z0-9+#.])' + body + '([^a-z0-9+#]|$)', 'i');
+
+const TAG_ONTOLOGY = [
+  // --- languages -----------------------------------------------------------
+  ['Python', 'tech', w('python')],
+  ['JavaScript', 'tech', w('javascript')],
+  ['TypeScript', 'tech', w('typescript')],
+  ['Go', 'tech', /\b(golang|\bgo programming|in go\b)/i],
+  ['Rust', 'tech', w('rust')],
+  ['Java', 'tech', /\bjava\b(?!script)/i],
+  ['Kotlin', 'tech', w('kotlin')],
+  ['Swift', 'tech', w('swift')],
+  ['Ruby', 'tech', /\bruby\b|\brails\b/i],
+  ['C++', 'tech', /c\+\+/i],
+  ['C#/.NET', 'tech', /\bc#|\.net\b/i],
+  ['Scala', 'tech', w('scala')],
+  ['Elixir', 'tech', w('elixir')],
+  ['PHP', 'tech', w('php')],
+  ['SQL', 'tech', w('sql')],
+  ['R', 'tech', /\br\b(?= programming|, python| and python)/i],
+  // --- frontend ------------------------------------------------------------
+  ['React', 'tech', /\breact\b/i],
+  ['Vue', 'tech', /\bvue(\.js)?\b/i],
+  ['Angular', 'tech', /\bangular\b/i],
+  ['Svelte', 'tech', /\bsvelte\b/i],
+  ['Next.js', 'tech', /\bnext\.js\b/i],
+  ['CSS/Design systems', 'tech', /\b(tailwind|design system|css-in-js|styled components)\b/i],
+  ['Accessibility', 'tech', /\b(accessibility|wcag|a11y)\b/i],
+  ['iOS', 'tech', /\b(ios|swiftui|objective-c)\b/i],
+  ['Android', 'tech', /\bandroid\b/i],
+  ['React Native', 'tech', /\breact native\b/i],
+  ['Flutter', 'tech', /\bflutter\b/i],
+  // --- backend & data ------------------------------------------------------
+  ['Node.js', 'tech', /\bnode\.?js\b/i],
+  ['Django/Flask', 'tech', /\b(django|flask|fastapi)\b/i],
+  ['Spring', 'tech', /\bspring boot\b|\bspring framework\b/i],
+  ['GraphQL', 'tech', /\bgraphql\b/i],
+  ['gRPC', 'tech', /\bgrpc\b/i],
+  ['REST APIs', 'tech', /\brest(ful)? api/i],
+  ['Postgres', 'tech', /\bpostgres(ql)?\b/i],
+  ['MySQL', 'tech', /\bmysql\b/i],
+  ['MongoDB', 'tech', /\bmongo(db)?\b/i],
+  ['Redis', 'tech', /\bredis\b/i],
+  ['Elasticsearch', 'tech', /\b(elasticsearch|opensearch)\b/i],
+  ['Kafka', 'tech', /\bkafka\b/i],
+  ['Spark', 'tech', /\b(apache )?spark\b/i],
+  ['Airflow/dbt', 'tech', /\b(airflow|dbt)\b/i],
+  ['Snowflake/BigQuery', 'tech', /\b(snowflake|bigquery|redshift)\b/i],
+  ['Data pipelines', 'tech', /\b(data pipeline|etl|elt)\b/i],
+  // --- infra ---------------------------------------------------------------
+  ['Kubernetes', 'tech', /\b(kubernetes|k8s)\b/i],
+  ['Docker', 'tech', /\bdocker|containeriz/i],
+  ['Terraform/IaC', 'tech', /\b(terraform|infrastructure as code|pulumi)\b/i],
+  ['AWS', 'tech', /\baws\b|amazon web services/i],
+  ['GCP', 'tech', /\bgcp\b|google cloud/i],
+  ['Azure', 'tech', /\bazure\b/i],
+  ['CI/CD', 'tech', /\b(ci\/cd|continuous (integration|delivery|deployment)|github actions|jenkins)\b/i],
+  ['Observability', 'tech', /\b(observability|prometheus|grafana|datadog|opentelemetry)\b/i],
+  ['Linux', 'tech', /\blinux\b/i],
+  ['Distributed systems', 'tech', /\bdistributed systems?\b/i],
+  ['Microservices', 'tech', /\bmicroservice/i],
+  ['Embedded/Firmware', 'tech', /\b(embedded|firmware|rtos|microcontroller)\b/i],
+  // --- ml / ai -------------------------------------------------------------
+  ['Machine learning', 'tech', /\bmachine learning\b|\bml engineer/i],
+  ['Deep learning', 'tech', /\bdeep learning\b|\bneural network/i],
+  ['PyTorch/TensorFlow', 'tech', /\b(pytorch|tensorflow|jax)\b/i],
+  ['LLMs', 'tech', /\b(llm|large language model|generative ai|genai|foundation model)\b/i],
+  ['RAG/Embeddings', 'tech', /\b(retrieval[- ]augmented|rag pipeline|vector (db|database)|embeddings)\b/i],
+  ['Computer vision', 'tech', /\bcomputer vision\b|\bimage recognition\b/i],
+  ['NLP', 'tech', /\bnlp\b|natural language processing/i],
+  ['Recommenders/Ranking', 'tech', /\b(recommendation system|recommender|ranking system|search relevance)\b/i],
+  ['Reinforcement learning', 'tech', /\breinforcement learning\b|\brlhf\b/i],
+  ['MLOps', 'tech', /\bmlops\b|\bmodel deployment\b/i],
+  ['Research', 'tech', /\b(research scientist|publish(ed|ing)? papers|neurips|icml|research engineer)\b/i],
+  ['Statistics/Experimentation', 'tech', /\b(a\/b test|experimentation|causal inference|statistical model)/i],
+  // --- security ------------------------------------------------------------
+  ['Security', 'tech', /\b(security engineer|appsec|infosec|penetration test|threat model)\b/i],
+  ['Cryptography', 'tech', /\bcryptograph/i],
+  // --- non-engineering craft ----------------------------------------------
+  ['Product management', 'tech', /\bproduct manager\b|\bproduct management\b/i],
+  ['UX/Product design', 'tech', /\b(ux|user experience|product design|figma)\b/i],
+  ['User research', 'tech', /\buser research\b/i],
+  ['Analytics/BI', 'tech', /\b(business intelligence|tableau|looker|power bi|analytics)\b/i],
+  ['Technical writing', 'tech', /\btechnical writ/i],
+  ['Developer relations', 'tech', /\b(developer relations|devrel|developer advocate)\b/i],
+  ['Solutions engineering', 'tech', /\b(solutions engineer|sales engineer|forward deployed)\b/i],
+  // --- work type (mirrors family, kept as tags so it competes for a click) --
+  ['Backend', 'work', /\b(backend|back-end|server-side)\b/i],
+  ['Frontend', 'work', /\b(frontend|front-end)\b/i],
+  ['Full stack', 'work', /\bfull[- ]?stack\b/i],
+  ['Infra/SRE/Platform', 'work', /\b(infrastructure engineer|site reliability|sre\b|platform engineer|devops)\b/i],
+  ['Mobile', 'work', /\bmobile (engineer|developer)\b/i],
+  ['Data engineering', 'work', /\bdata engineer\b/i],
+  ['Data science', 'work', /\bdata scientist\b|\bdata science\b/i],
+  ['Sales/GTM', 'work', /\b(account executive|sales manager|business development|quota)\b/i],
+  ['Marketing', 'work', /\b(marketing manager|demand generation|brand manager|content marketing)\b/i],
+  ['Customer success', 'work', /\b(customer success|account manager|technical support)\b/i],
+  ['Operations', 'work', /\b(operations manager|program manager|project manager|chief of staff)\b/i],
+  ['Recruiting/People', 'work', /\b(recruiter|talent acquisition|people operations|hr manager)\b/i],
+  ['Finance/Legal', 'work', /\b(financial analyst|controller|accountant|legal counsel|compliance officer)\b/i],
+  ['Engineering management', 'work', /\b(engineering manager|head of engineering|director of engineering|vp of engineering)\b/i],
+  // --- domain --------------------------------------------------------------
+  ['Fintech/Payments', 'domain', /\b(fintech|payments|banking|lending|insurance|trading|financial services)\b/i],
+  ['Developer tools', 'domain', /\b(developer tool|devtool|developer platform|api platform|open source)\b/i],
+  ['AI labs/Frontier', 'domain', /\b(agi|frontier model|ai safety|alignment research|ai lab)\b/i],
+  ['Healthcare/Bio', 'domain', /\b(healthcare|clinical|patient|biotech|medical device|life sciences|pharma)\b/i],
+  ['E-commerce/Retail', 'domain', /\b(e-?commerce|marketplace|retail|shopper|merchandis)/i],
+  ['Gaming', 'domain', /\b(game (developer|studio|design)|gaming|unreal engine|unity engine)\b/i],
+  ['Climate/Energy', 'domain', /\b(climate|renewable|clean energy|sustainability|decarbon|solar|battery)\b/i],
+  ['Education', 'domain', /\b(edtech|education technology|learners|curriculum|students)\b/i],
+  ['Logistics/Mobility', 'domain', /\b(logistics|supply chain|fleet|mobility|autonomous vehicle|delivery network)\b/i],
+  ['Media/Creator', 'domain', /\b(streaming|media platform|creator economy|publishing|advertising platform)\b/i],
+  ['B2B SaaS', 'domain', /\b(b2b saas|enterprise software|saas platform)\b/i],
+  ['Security products', 'domain', /\b(cybersecurity|security platform|zero trust|siem)\b/i],
+  ['Government/Defence', 'domain', /\b(government|public sector|defen[cs]e|federal agency|national security)\b/i],
+  // --- conditions ----------------------------------------------------------
+  ['Visa sponsorship', 'condition', /\b(visa sponsorship|sponsor(ship)? (a |an )?visa|h-?1b sponsor|relocation support|work permit)\b/i],
+  ['No sponsorship', 'condition', /\b(no (visa )?sponsorship|not (able|be able) to sponsor|unable to sponsor|must be authorized to work)\b/i],
+  ['Equity', 'condition', /\b(equity|stock options|rsus|share options)\b/i],
+  ['Relocation', 'condition', /\brelocation (package|assistance|support)\b/i],
+  ['On-call', 'condition', /\b(on-?call rotation|pager duty|24\/7 support)\b/i],
+  ['Security clearance', 'condition', /\b(security clearance|ts\/sci|top secret|polygraph)\b/i],
+  ['Travel required', 'condition', /\b(travel (up to|requirement)|\d{2}% travel|frequent travel)\b/i],
+  ['Greenfield/0-to-1', 'condition', /\b(greenfield|zero to one|0 to 1|from scratch|ground up|founding engineer)\b/i],
+  ['Mentorship', 'condition', /\b(mentor(ing|ship)|coach(ing)? engineers|grow the team)\b/i],
+  ['Fast-paced', 'condition', /\b(fast-?paced|move quickly|high growth|scrappy)\b/i],
+  ['Cross-functional', 'condition', /\bcross-?functional\b/i],
+  ['Ownership/Autonomy', 'condition', /\b(ownership|autonomy|own the|end-to-end ownership)\b/i],
+  ['Customer-facing', 'condition', /\b(customer-?facing|client-?facing|stakeholder management)\b/i],
+  ['Shift work', 'condition', /\b(shift work|night shift|weekend shift|rotating shift)\b/i],
+  ['Contract/Temp', 'condition', /\b(contract role|fixed[- ]term|temporary position|freelance|contractor)\b/i],
+  ['Part-time', 'condition', /\bpart[- ]time\b/i],
+  ['German required', 'condition', /\b(german (language )?(skills|required)|fließend deutsch|deutschkenntnisse|sehr gute deutsch)\b/i]
+];
+
+// Experience floors are worth an opinion of their own -- "8+ years" is a
+// different job from "2+ years" even when everything else matches.
+function experienceTag(body) {
+  const match = body.match(/(\d{1,2})\s*\+?\s*(?:-\s*\d{1,2}\s*)?(?:years?|yrs?|jahre)\b[^.]{0,40}?(?:experience|erfahrung)/i);
+  if (!match) return '';
+  const years = Number(match[1]);
+  if (!isFinite(years) || years <= 0 || years > 25) return '';
+  if (years <= 1) return '0-1 years';
+  if (years <= 3) return '2-3 years';
+  if (years <= 5) return '4-5 years';
+  if (years <= 8) return '6-8 years';
+  return '9+ years';
+}
+
 /* ------------------------------------------------------------------ tagger */
 
-// The skill vocabulary is matched literally against the posting body. This is
-// the precision half of the tagger: a hit means the phrase is actually in the
-// text, so a learned weight on it is always explainable back to real evidence.
-// The recall half (extractKeyphrases below) picks up whatever the list misses.
-// Same split CineLens runs between its dictionary and its local tag scorer.
-const SKILL_VOCAB = [
-  'python','javascript','typescript','golang','rust','java','kotlin','swift','ruby',
-  'c++','scala','elixir','clojure','haskell','php','solidity',
-  'react','next.js','vue','svelte','angular','tailwind','webgl','three.js',
-  'react native','flutter','ios','android',
-  'node.js','django','flask','fastapi','rails','spring','graphql','grpc',
-  'postgres','postgresql','mysql','mongodb','redis','elasticsearch','cassandra','dynamodb',
-  'kafka','rabbitmq','airflow','dbt','spark','hadoop','snowflake','databricks','clickhouse',
-  'kubernetes','docker','terraform','aws','gcp','azure','jenkins','github actions',
-  'observability','prometheus','grafana','datadog','linux','distributed systems',
-  'microservices','serverless','site reliability',
-  'machine learning','deep learning','pytorch','tensorflow','jax','computer vision',
-  'large language model','transformers','fine-tuning','reinforcement learning',
-  'recommendation systems','ranking','embeddings','mlops','data science','statistics',
-  'cryptography','penetration testing','threat modeling','soc 2',
-  'product management','user research','design systems','figma','accessibility',
-  'experimentation','analytics','data pipeline','tableau',
-  'technical writing','developer relations','solutions engineering','sales engineering',
-  'pair programming','code review','on-call','mentorship','greenfield','zero to one',
-  'open source','fast-paced','ownership','autonomy','cross-functional',
-  'customer-facing','prototyping','migration'
-];
 
 const FAMILY_RULES = [
   ['Engineering - Frontend', /\b(frontend|front-end|ui engineer|web engineer)\b/i],
@@ -887,81 +1039,208 @@ const STOPWORD_SOURCE = 'a an the and or but if then else of for for to in on at
   'looking join hiring people world every make making like well right best good ensure drive support high level';
 const STOPWORDS = new Set(STOPWORD_SOURCE.split(/\s+/));
 
-// Recall half: repeated 2- and 3-word content phrases. The trap CineLens
-// documents for names (spec 3.2.2) shows up here as company names and hiring
-// boilerplate; the stopword list catches the boilerplate and the >10%
-// presentability cut at scoring time catches whatever repeats across the
-// library. A phrase must appear at least twice in one posting to count at all.
-function extractKeyphrases(body, limit) {
-  const words = body.toLowerCase().replace(/[^a-z0-9+#./ -]/g, ' ').split(/\s+/).filter(Boolean);
-  const counts = new Map();
-  for (let n = 2; n <= 3; n++) {
-    for (let i = 0; i + n <= words.length; i++) {
-      const gram = words.slice(i, i + n);
-      let ok = true;
-      for (const w of gram) {
-        if (STOPWORDS.has(w) || w.length < 3 || /^\d+$/.test(w)) { ok = false; break; }
-      }
-      if (!ok) continue;
-      const phrase = gram.join(' ');
-      if (phrase.length > 34) continue;
-      counts.set(phrase, (counts.get(phrase) || 0) + 1);
+/* --------------------------------------------------------- preference model */
+
+// You rank TAGS, not jobs.
+//
+// Five fixed facets ran out of road exactly as predicted: after twenty postings
+// you have said "Location: 4" twenty times, and each repetition carries less
+// than the last. Worse, the things that actually separate two backend jobs --
+// on-call, greenfield, visa sponsorship, the domain -- were only ever learned
+// indirectly, through a tag lane that needed many ratings and a lot of contrast
+// before it said anything.
+//
+// Clicking tags in preference order fixes the economics. A star was a statement
+// about ONE posting. "Remote beats Python" is a statement about every posting
+// carrying either tag, so it transfers across the whole corpus the moment it is
+// made. Ranking three tags on a posting that carries eight yields eighteen
+// pairwise constraints from three clicks.
+//
+// The learner is Bradley-Terry: every constraint "a should outrank b" nudges
+// u[a] up and u[b] down by how surprised the model is, so a comparison it
+// already predicts teaches almost nothing and a contradiction teaches a lot.
+// Same maths as Elo. Utilities are stored, retrained from the stored events, so
+// a ranking can be undone and the model rebuilt exactly.
+
+const RANK_PASSES = 24;
+const RANK_LEARNING_RATE = 0.16;
+const RANK_DECAY = 0.94;
+const RANK_REGULARIZATION = 0.012;
+// A dismissal says "none of this appeals" without saying which part, so it is
+// admitted as a weak negative across the posting's tags rather than a ranking.
+const DISMISS_WEIGHT = 0.25;
+// A tag on almost everything cannot discriminate; a tag on almost nothing is not
+// worth a click. Only tags inside this band are offered for ranking.
+const TAG_BAND_MIN = 0.004;
+const TAG_BAND_MAX = 0.30;
+
+function rankingEvents() {
+  const events = [];
+  Object.values(state.jobs).forEach(job => {
+    if (job.ranking && (job.ranking.order || []).length) {
+      events.push({ order: job.ranking.order, disliked: job.ranking.disliked || [], pool: job.tags || [], weight: 1 });
+    } else if (job.dismissed) {
+      events.push({ order: [], disliked: job.tags || [], pool: job.tags || [], weight: DISMISS_WEIGHT });
     }
+  });
+  return events;
+}
+
+// Every constraint the event implies, as [winner, loser, weight]. Clicked tags
+// beat later-clicked ones, everything clicked beats everything unclicked, and
+// anything explicitly disliked loses to both.
+function eventPairs(event) {
+  const pairs = [];
+  const order = event.order || [];
+  const disliked = event.disliked || [];
+  const clicked = new Set(order);
+  const down = new Set(disliked);
+  const rest = (event.pool || []).filter(tag => !clicked.has(tag) && !down.has(tag));
+  for (let i = 0; i < order.length; i++) {
+    for (let j = i + 1; j < order.length; j++) pairs.push([order[i], order[j], event.weight]);
+    rest.forEach(tag => pairs.push([order[i], tag, event.weight * 0.7]));
+    disliked.forEach(tag => pairs.push([order[i], tag, event.weight]));
   }
-  return Array.from(counts.entries())
-    .filter(pair => pair[1] >= 2)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit || 14)
-    .map(pair => pair[0]);
+  rest.forEach(tag => disliked.forEach(bad => pairs.push([tag, bad, event.weight * 0.5])));
+  return pairs;
 }
 
-function matchesSkill(haystack, term) {
-  const t = term.toLowerCase();
-  if (!/^[a-z0-9]/.test(t) || !/[a-z0-9]$/.test(t)) return haystack.indexOf(t) !== -1;
-  const escaped = t.replace(/[.+*?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp('(^|[^a-z0-9])' + escaped + '([^a-z0-9]|$)').test(haystack);
+let tagUtilityCache = null;
+
+function trainTagUtilities() {
+  const events = rankingEvents();
+  const utility = {};
+  const pairs = [];
+  events.forEach(event => eventPairs(event).forEach(pair => pairs.push(pair)));
+  if (!pairs.length) return { utility: utility, pairs: 0, events: 0, tags: 0 };
+
+  pairs.forEach(pair => {
+    if (!(pair[0] in utility)) utility[pair[0]] = 0;
+    if (!(pair[1] in utility)) utility[pair[1]] = 0;
+  });
+
+  let rate = RANK_LEARNING_RATE;
+  for (let pass = 0; pass < RANK_PASSES; pass++) {
+    pairs.forEach(pair => {
+      const a = pair[0], b = pair[1], weight = pair[2];
+      // P(a beats b) under the current utilities. The update is the residual,
+      // so a pair the model already gets right barely moves anything.
+      const probability = 1 / (1 + Math.exp(-(utility[a] - utility[b])));
+      const step = rate * weight * (1 - probability);
+      utility[a] += step;
+      utility[b] -= step;
+    });
+    // Shrink toward zero so a tag seen in one lopsided comparison cannot run
+    // away to an extreme the evidence does not support.
+    Object.keys(utility).forEach(tag => { utility[tag] *= (1 - RANK_REGULARIZATION); });
+    rate *= RANK_DECAY;
+  }
+  return { utility: utility, pairs: pairs.length, events: events.length, tags: Object.keys(utility).length };
 }
 
-function tagPosting(row) {
-  const body = row.body || '';
-  const haystack = (row.title + ' ' + body).toLowerCase();
-  const skills = SKILL_VOCAB.filter(term => matchesSkill(haystack, term));
-  const familyRule = FAMILY_RULES.find(r => r[1].test(row.title)) ||
-                     FAMILY_RULES.find(r => r[1].test(haystack));
-  const seniorityRule = SENIORITY_RULES.find(r => r[1].test(row.title));
-  const tags = Array.from(new Set(skills.concat(extractKeyphrases(body, 14))));
-  const salary = extractSalary(row, body);
+function tagModel() {
+  if (!tagUtilityCache) tagUtilityCache = trainTagUtilities();
+  return tagUtilityCache;
+}
+
+function invalidateTaste() {
+  tagUtilityCache = null;
+  tagFrequencyCache = null;
+}
+
+function tagUtility(tag) {
+  const value = tagModel().utility[tag];
+  return value === undefined ? 0 : value;
+}
+
+// Rankable tags: inside the frequency band, so a click always moves a
+// meaningful number of postings and never merely restates the obvious.
+function tagIsRankable(tag) {
+  const freq = tagFrequency();
+  const share = (freq.counts.get(tag) || 0) / freq.total;
+  return share >= TAG_BAND_MIN && share <= TAG_BAND_MAX;
+}
+
+function tagCoverage(tag) {
+  return tagFrequency().counts.get(tag) || 0;
+}
+
+// A posting scores as the mean utility of the tags it carries, which keeps a
+// twenty-tag posting from beating a six-tag one on volume alone. The resume
+// still contributes, fading as real rankings arrive.
+function jobScore(job) {
+  const tags = (job.tags || []).filter(tagIsRankable);
+  if (!tags.length) return { score: 0, known: 0, positive: [], negative: [] };
+  const model = tagModel();
+  const scale = resumeEvidenceScale(model.events);
+  let total = 0, known = 0;
+  const contributions = [];
+  tags.forEach(tag => {
+    const learned = tagUtility(tag);
+    const resume = resumeTagEffect(tag, model.events) * scale * 0.5;
+    const value = learned + resume;
+    total += value;
+    if (learned !== 0) known++;
+    contributions.push([tag, value]);
+  });
+  contributions.sort((a, b) => b[1] - a[1]);
   return {
-    salary: salary,
-    id: row.entry.ats + ':' + row.entry.slug + ':' + row.key,
-    company: row.company || row.entry.company,
-    ats: row.entry.ats,
-    title: row.title || '(untitled)',
-    url: row.url || '',
-    location: row.location || '',
-    locationClass: classifyLocation(row.location + ' ' + body.slice(0, 400)),
-    region: regionOf(row.location),
-    postedAt: row.postedAt || '',
-    family: familyRule ? familyRule[0] : 'Other',
-    seniority: seniorityRule ? seniorityRule[0] : 'Mid',
-    tags: tags,
-    conditions: conditionTags(row, body),
-    // sourceShed, CineLens-style: the body produced the tags and is not needed
-    // again. Keeping 11k full descriptions would run to ~100MB in IndexedDB for
-    // no scoring benefit. Shed BYTES, never the record -- an unrated posting may
-    // match well after a later tagger change, and the excerpt is enough to
-    // re-read one by eye without a refetch.
-    excerpt: body.slice(0, 320),
-    bodyChars: body.length,
-    ratings: { role: 0, level: 0, company: 0, location: 0, salary: 0 },
-    ratedAt: '',
-    dismissed: false,
-    hidden: false,
-    firstSeen: new Date().toISOString()
+    score: total / tags.length,
+    known: known,
+    positive: contributions.filter(pair => pair[1] > 0.02),
+    negative: contributions.filter(pair => pair[1] < -0.02).reverse()
   };
 }
 
-/* ------------------------------------------------------------- taste model */
+// Percentile, not a predicted rating. Ranking data carries no absolute scale --
+// you never said a job was "4 out of 5", only that one tag beats another -- so
+// the honest reading of a score is where it sits among the postings you could
+// actually be shown, and that is what the card displays.
+let scoreDistribution = null;
+
+function setScoreDistribution(scores) {
+  scoreDistribution = scores.slice().sort((a, b) => a - b);
+}
+
+function scorePercentile(score) {
+  if (!scoreDistribution || !scoreDistribution.length) return null;
+  let lo = 0, hi = scoreDistribution.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (scoreDistribution[mid] < score) lo = mid + 1; else hi = mid;
+  }
+  return Math.round((lo / scoreDistribution.length) * 100);
+}
+
+function predictFit(job) {
+  const scored = jobScore(job);
+  const model = tagModel();
+  const percentile = scorePercentile(scored.score);
+  return {
+    score: scored.score,
+    matchPct: percentile === null ? null : percentile,
+    knownTags: scored.known,
+    positive: scored.positive,
+    negative: scored.negative,
+    usable: model.pairs > 0,
+    events: model.events,
+    pairs: model.pairs
+  };
+}
+
+function tasteStatus() {
+  const model = tagModel();
+  const ranked = Object.values(state.jobs).filter(job => job.ranking && (job.ranking.order || []).length).length;
+  return {
+    ranked: ranked,
+    events: model.events,
+    pairs: model.pairs,
+    tags: model.tags,
+    usable: model.pairs > 0
+  };
+}
+
+/* ---------------------------------------------------- shared tag statistics */
 
 // FIVE FACETS, not one star.
 //
@@ -988,53 +1267,8 @@ function tagPosting(row) {
 //
 // Facets are optional per job: rate what you can judge, leave the rest at zero.
 
-const FACET_KEYS = ['role', 'level', 'company', 'location', 'salary'];
 
-const FACET_LABELS = {
-  role: 'Role', level: 'Level', company: 'Company', location: 'Location', salary: 'Salary'
-};
 
-// Pay bands low to high. Order matters: the salary facet is ordinal, not
-// categorical, and the monotone pass below relies on this sequence.
-const PAY_BAND_ORDER = [
-  'pay:under-25L ppp', 'pay:25-40L ppp', 'pay:40-60L ppp',
-  'pay:60L-1Cr ppp', 'pay:1-1.5Cr ppp', 'pay:1.5Cr+ ppp'
-];
-
-// Shrinkage toward the global mean, in units of "ratings". A company you rated
-// once sits mostly at the global mean; by the fifth rating it has largely moved
-// to its own. Without this, one 5-star makes a company look like a certainty.
-const CATEGORICAL_SHRINKAGE = 2.5;
-
-function facetFeatures(job, facet) {
-  switch (facet) {
-    case 'role': return job.tags || [];
-    case 'level': return broadFeatures(job);
-    case 'company': return job.company ? ['company:' + job.company] : [];
-    case 'location': {
-      const out = [];
-      if (job.locationClass) out.push('loc:' + job.locationClass);
-      if (job.region) out.push('region:' + job.region);
-      return out;
-    }
-    case 'salary': return job.salary && job.salary.band ? [job.salary.band] : [];
-    default: return [];
-  }
-}
-
-function facetRating(job, facet) {
-  return Number((job.ratings || {})[facet] || 0);
-}
-
-function hasAnyRating(job) {
-  return FACET_KEYS.some(facet => facetRating(job, facet) > 0);
-}
-
-function ratedJobs(excludeId) {
-  const skip = String(excludeId || '');
-  return Object.values(state.jobs).filter(job =>
-    hasAnyRating(job) && (!skip || String(job.id) !== skip));
-}
 
 // Dismissals stay cheap and numerous next to a considered star, so they keep
 // the reduced weight they had.
@@ -1044,294 +1278,15 @@ function ratedJobs(excludeId) {
 // of the 5.8 seconds a single star click used to cost.
 let ratedCountCache = null;
 
-function ratedCount() {
-  if (ratedCountCache === null) ratedCountCache = ratedJobs('').length;
-  return ratedCountCache;
-}
-
-function rowWeight(job) {
-  return job.dismissed ? ROW_WEIGHT_DISMISSED : ROW_WEIGHT_RATED;
-}
-
-function facetRows(facet, excludeId) {
-  const skip = String(excludeId || '');
-  const rows = [];
-  Object.values(state.jobs).forEach(job => {
-    const rating = facetRating(job, facet);
-    if (!rating) return;
-    if (skip && String(job.id) === skip) return;
-    rows.push({
-      job: job,
-      rating: rating,
-      weight: rowWeight(job),
-      features: facetFeatures(job, facet)
-    });
-  });
-  return rows;
-}
-
 /* --- the role facet: the residual tag model, unchanged in substance -------- */
-
-function trainRoleModel(rows) {
-  const totalWeight = rows.reduce((sum, row) => sum + row.weight, 0);
-  const baseline = totalWeight
-    ? rows.reduce((sum, row) => sum + row.rating * row.weight, 0) / totalWeight
-    : 3;
-  const model = {
-    kind: 'residual', baseline: baseline, effects: {}, evidenceCount: rows.length,
-    calibrationSlope: 1, calibrationIntercept: 0,
-    tagMassPivot: TAG_MASS_PIVOT_FALLBACK, degenerate: false
-  };
-  const ratings = rows.map(row => row.rating);
-  model.degenerate = !ratings.length ||
-    Math.max.apply(null, ratings) - Math.min.apply(null, ratings) === 0;
-  if (rows.length < MIN_RATINGS_FOR_MODEL || model.degenerate) return model;
-
-  const masses = rows.map(row => tagFeatureMass(row.features));
-  const sorted = masses.slice().sort((a, b) => a - b);
-  model.tagMassPivot = sorted[Math.floor(sorted.length / 2)] || TAG_MASS_PIVOT_FALLBACK;
-  const lengthFactors = masses.map(mass => tagMassLengthFactor(mass, model.tagMassPivot));
-  const predictions = rows.map(() => baseline);
-
-  for (let pass = 0; pass < TASTE_MODEL_PASSES; pass++) {
-    const stats = {};
-    rows.forEach((row, index) => {
-      const residual = row.rating - predictions[index];
-      row.features.forEach(tag => {
-        const feature = tagFeatureValue(tag) * lengthFactors[index];
-        const stat = stats[tag] || (stats[tag] = { sum: 0, strength: 0 });
-        stat.sum += residual * feature * row.weight;
-        stat.strength += feature * feature * row.weight;
-      });
-    });
-    const deltas = {};
-    Object.keys(stats).forEach(tag => {
-      const stat = stats[tag];
-      const delta = clamp(
-        (stat.sum / (stat.strength + TASTE_MODEL_TAG_REGULARIZATION)) * TASTE_MODEL_TAG_LEARNING_RATE,
-        -0.42, 0.42);
-      if (!delta) return;
-      model.effects[tag] = (model.effects[tag] || 0) + delta;
-      deltas[tag] = delta;
-    });
-    rows.forEach((row, index) => {
-      row.features.forEach(tag => {
-        predictions[index] += (deltas[tag] || 0) * tagFeatureValue(tag) * lengthFactors[index];
-      });
-      predictions[index] = clamp(predictions[index], 1, 5);
-    });
-  }
-
-  const meanRaw = predictions.reduce((sum, v, i) => sum + v * rows[i].weight, 0) / totalWeight;
-  const meanActual = rows.reduce((sum, r) => sum + r.rating * r.weight, 0) / totalWeight;
-  let variance = 0, covariance = 0;
-  predictions.forEach((value, index) => {
-    const d = value - meanRaw;
-    variance += d * d * rows[index].weight;
-    covariance += d * (rows[index].rating - meanActual) * rows[index].weight;
-  });
-  if (variance > 0.001) {
-    model.calibrationSlope = clamp(covariance / variance, 0.45, 2.4);
-    model.calibrationIntercept = meanActual - model.calibrationSlope * meanRaw;
-  }
-  return model;
-}
 
 /* --- level, company, location: shrunk means over categories --------------- */
 
-// These features are few and repeat often, so there is nothing to regress: the
-// weighted mean rating of a category IS the estimate, pulled toward the global
-// mean by however little evidence supports it.
-function trainCategoricalModel(rows) {
-  const totalWeight = rows.reduce((sum, row) => sum + row.weight, 0);
-  const baseline = totalWeight
-    ? rows.reduce((sum, row) => sum + row.rating * row.weight, 0) / totalWeight
-    : 3;
-  const model = { kind: 'categorical', baseline: baseline, effects: {}, evidenceCount: rows.length };
-  const stats = {};
-  rows.forEach(row => {
-    row.features.forEach(key => {
-      const stat = stats[key] || (stats[key] = { sum: 0, weight: 0, count: 0 });
-      stat.sum += row.rating * row.weight;
-      stat.weight += row.weight;
-      stat.count += 1;
-    });
-  });
-  Object.keys(stats).forEach(key => {
-    const stat = stats[key];
-    model.effects[key] = (stat.sum + CATEGORICAL_SHRINKAGE * baseline) /
-                         (stat.weight + CATEGORICAL_SHRINKAGE);
-  });
-  return model;
-}
-
 /* --- salary: the same, then forced to never fall as pay rises ------------- */
-
-// More money is never worse. Ratings are sparse enough that you might rate one
-// band and skip the one above it, and an unsmoothed estimate would then claim
-// you prefer 40L to 1Cr purely because you never rated 1Cr. A running maximum up
-// the band order removes that artefact, and it is safe precisely because the
-// ordering is real -- this would be wrong for location, which has no such order.
-function trainSalaryModel(rows) {
-  const model = trainCategoricalModel(rows);
-  model.kind = 'ordinal';
-  let running = -Infinity;
-  PAY_BAND_ORDER.forEach(band => {
-    const value = model.effects[band];
-    if (value === undefined) {
-      if (running > -Infinity) model.effects[band] = running;
-      return;
-    }
-    running = Math.max(running, value);
-    model.effects[band] = running;
-  });
-  // Bands below the lowest rated one inherit the lowest estimate, so a posting
-  // paying less than anything you rated is not treated as unknown.
-  let backfill;
-  for (let i = PAY_BAND_ORDER.length - 1; i >= 0; i--) {
-    const band = PAY_BAND_ORDER[i];
-    if (model.effects[band] !== undefined) backfill = model.effects[band];
-    else if (backfill !== undefined) model.effects[band] = backfill;
-  }
-  return model;
-}
-
-function trainFacet(facet, excludeId) {
-  const rows = facetRows(facet, excludeId);
-  if (facet === 'role') return trainRoleModel(rows);
-  if (facet === 'salary') return trainSalaryModel(rows);
-  return trainCategoricalModel(rows);
-}
 
 const facetModelCache = new Map();
 
-function getFacetModel(facet, excludeId) {
-  const key = facet + '|' + String(excludeId || '__full__');
-  if (!facetModelCache.has(key)) facetModelCache.set(key, trainFacet(facet, excludeId));
-  return facetModelCache.get(key);
-}
-
-function invalidateTaste() {
-  facetModelCache.clear();
-  tagFrequencyCache = null;
-  ratedCountCache = null;
-}
-
 /* --- prediction ----------------------------------------------------------- */
-
-function facetImportance(facet) {
-  const table = state.settings.facetImportance;
-  const stored = table ? Number(table[facet]) : NaN;
-  return isFinite(stored) && stored >= 0 ? stored : 1;
-}
-
-// One facet's predicted 1-5 for one job, or null when that facet has nothing to
-// say -- either no ratings yet, or this posting carries no feature it knows
-// (a posting with no stated salary can never get a salary prediction).
-function predictFacet(job, facet, excludeId) {
-  const model = getFacetModel(facet, excludeId);
-  const features = facetFeatures(job, facet);
-  if (!model.evidenceCount || !features.length) return null;
-
-  if (model.kind === 'residual') {
-    if (model.degenerate || model.evidenceCount < MIN_RATINGS_FOR_MODEL) return null;
-    const lengthFactor = tagMassLengthFactor(tagFeatureMass(features), model.tagMassPivot);
-    let raw = model.baseline;
-    const positive = [], negative = [];
-    features.forEach(tag => {
-      const contribution =
-        (Number(model.effects[tag] || 0) + resumeTagEffect(tag, model.evidenceCount)) *
-        tagFeatureValue(tag) * lengthFactor;
-      raw += contribution;
-      if (contribution > 0.015) positive.push([tag, contribution]);
-      else if (contribution < -0.015) negative.push([tag, contribution]);
-    });
-    raw = clamp(model.calibrationSlope * clamp(raw, 1, 5) + model.calibrationIntercept, 1, 5);
-    positive.sort((a, b) => b[1] - a[1]);
-    negative.sort((a, b) => a[1] - b[1]);
-    return { value: raw, positive: positive, negative: negative, evidence: model.evidenceCount };
-  }
-
-  // Categorical and ordinal: average the known category estimates. Unknown
-  // categories are skipped rather than counted as neutral, so one known signal
-  // is not diluted by a feature the model has never seen.
-  let sum = 0, seen = 0;
-  const parts = [];
-  features.forEach(key => {
-    const value = model.effects[key];
-    if (value === undefined) return;
-    sum += value; seen++;
-    parts.push([key, value - model.baseline]);
-  });
-  if (!seen) return null;
-  const value = clamp(sum / seen, 1, 5);
-  parts.sort((a, b) => b[1] - a[1]);
-  return {
-    value: value,
-    positive: parts.filter(p => p[1] > 0.05),
-    negative: parts.filter(p => p[1] < -0.05).reverse(),
-    evidence: model.evidenceCount
-  };
-}
-
-// Rated postings predict leave-one-out, as before: a posting may not improve its
-// own displayed fit by contributing its own ratings to the model. The exclusion
-// is per facet, since a job rated only on salary contributed nothing to role.
-function predictFit(job) {
-  const excludeId = hasAnyRating(job) ? job.id : '';
-  const facets = {};
-  let weighted = 0, weight = 0;
-  let positive = [], negative = [];
-
-  FACET_KEYS.forEach(facet => {
-    const prediction = predictFacet(job, facet, excludeId);
-    facets[facet] = prediction;
-    if (!prediction) return;
-    const importance = facetImportance(facet);
-    if (!importance) return;
-    weighted += prediction.value * importance;
-    weight += importance;
-    positive = positive.concat(prediction.positive || []);
-    negative = negative.concat(prediction.negative || []);
-  });
-
-  const known = FACET_KEYS.filter(facet => facets[facet]);
-  const predicted = weight ? weighted / weight : 3;
-  positive.sort((a, b) => b[1] - a[1]);
-  negative.sort((a, b) => a[1] - b[1]);
-
-  return {
-    predicted: predicted,
-    matchPct: Math.round(((predicted - 1) / 4) * 100),
-    facets: facets,
-    knownFacets: known,
-    usable: known.length > 0,
-    positive: positive,
-    negative: negative,
-    positiveScore: positive.reduce((sum, p) => sum + p[1], 0),
-    negativePenalty: negative.reduce((sum, p) => sum + Math.abs(p[1]), 0),
-    evidenceCount: ratedCount(),
-    leaveOneOut: hasAnyRating(job)
-  };
-}
-
-// How much the model actually knows, for the messages that have to explain
-// themselves. A facet counts as live once it has any rating behind it, and the
-// role facet additionally needs contrast before it can learn anything at all.
-function tasteStatus() {
-  const rated = ratedCount();
-  const live = FACET_KEYS.filter(facet => {
-    const model = getFacetModel(facet, '');
-    if (!model.evidenceCount) return false;
-    if (model.kind === 'residual') {
-      return !model.degenerate && model.evidenceCount >= MIN_RATINGS_FOR_MODEL;
-    }
-    return true;
-  });
-  const perFacet = {};
-  FACET_KEYS.forEach(facet => { perFacet[facet] = getFacetModel(facet, '').evidenceCount; });
-  return { rated: rated, live: live, perFacet: perFacet, usable: live.length > 0 };
-}
 
 /* ---------------------------------------------------- shared tag statistics */
 
@@ -1396,13 +1351,6 @@ function tagMassLengthFactor(mass, pivot) {
   return clamp(Math.sqrt(p / mass), 0.55, 1.6);
 }
 
-function broadFeatures(job) {
-  const out = [];
-  if (job.family) out.push('family:' + job.family);
-  if (job.seniority) out.push('seniority:' + job.seniority);
-  return out;
-}
-
 // The resume's seat: CineLens's manualTagPreferenceEffect. There the unit is a
 // flat constant, because a stated tag preference competes with a rating history
 // that already exists. Here the resume is the ONLY signal on day one, and at the
@@ -1424,26 +1372,6 @@ function resumeTagEffect(tag, evidenceCount) {
 }
 
 /* ------------------------------------------------------------------ resume */
-
-// Asked once. It never leaves the browser: the text is turned into tag weights
-// here and only the weights are stored, so the resume itself is not sitting in
-// IndexedDB waiting to be exfiltrated by anything that can read this origin.
-function resumeToTagWeights(text) {
-  const haystack = String(text || '').toLowerCase();
-  if (!haystack.trim()) return {};
-  const weights = {};
-  SKILL_VOCAB.forEach(term => {
-    if (!matchesSkill(haystack, term)) return;
-    // Repetition in a resume is a real signal of emphasis, but a bounded one.
-    const escaped = term.toLowerCase().replace(/[.+*?^${}()|[\]\\]/g, '\\$&');
-    const hits = (haystack.match(new RegExp(escaped, 'g')) || []).length;
-    weights[term] = clamp(1 + Math.log2(hits || 1), 1, 3);
-  });
-  extractKeyphrases(haystack, 20).forEach(phrase => {
-    if (!weights[phrase]) weights[phrase] = 1;
-  });
-  return weights;
-}
 
 // Minimal dependency-free PDF text extraction: pull the text-showing operators
 // out of each content stream, inflating FlateDecode streams with the browser's
@@ -1521,7 +1449,7 @@ async function refreshPostings() {
           // Ratings and anything else the user set are theirs; a refresh
           // re-tags the posting but never overwrites what he decided about it.
           return Object.assign(record, {
-            ratings: existing.ratings,
+            ranking: existing.ranking,
             ratedAt: existing.ratedAt,
             hidden: existing.hidden,
             dismissed: existing.dismissed,
@@ -1597,71 +1525,152 @@ function passesFilters(job, context) {
   return true;
 }
 
-/* --------------------------------------------------------------- rendering */
-
-function chipHtml(entry, kind) {
-  const label = entry[0].replace(/^(family|seniority|loc|region|comp|perk|req|dept):/, '');
-  return '<span class="chip ' + kind + '" data-tag="' + esc(entry[0]) + '" title="' +
-    esc(entry[0] + '  ' + (entry[1] > 0 ? '+' : '') + entry[1].toFixed(3)) + '">' + esc(label) + '</span>';
+// Every tag on a posting comes from the closed ontology or from a structured
+// field. Nothing is mined from prose, so boilerplate cannot become a tag.
+function ontologyTags(haystack) {
+  const out = [];
+  for (let i = 0; i < TAG_ONTOLOGY.length; i++) {
+    if (TAG_ONTOLOGY[i][2].test(haystack)) out.push(TAG_ONTOLOGY[i][0]);
+  }
+  return out;
 }
 
-// Five facet rows. Each shows what that facet predicts for this posting until
-// you rate it, then shows your rating -- so the row is both the model's guess
-// and the place you correct it. A facet with nothing to say shows no guess
-// rather than a neutral-looking three stars it has not earned.
-function facetRowsHtml(job, fit) {
-  return '<div class="facets">' + FACET_KEYS.map(facet => {
-    const mine = facetRating(job, facet);
-    const guess = fit.facets[facet];
-    const stars = [1, 2, 3, 4, 5].map(n => {
-      const on = mine >= n;
-      const predicted = !mine && guess && Math.round(guess.value) >= n;
-      return '<button class="star' + (on ? ' on' : predicted ? ' guess' : '') +
-        '" data-rate="' + n + '" data-facet="' + facet + '" data-id="' + esc(job.id) +
-        '" title="' + esc(FACET_LABELS[facet] + ': ' + n + ' star' + (on ? ' (click to clear)' : '')) +
-        '">' + (on ? '★' : predicted ? '★' : '☆') + '</button>';
-    }).join('');
-    const note = mine ? 'you'
-      : guess ? 'predicted ' + guess.value.toFixed(1)
-      : 'no signal';
-    return '<div class="facetRow"><span class="facetName">' + esc(FACET_LABELS[facet]) + '</span>' +
-      '<span class="facetStars">' + stars + '</span>' +
-      '<span class="facetNote' + (mine ? ' mine' : '') + '">' + esc(note) + '</span></div>';
-  }).join('') + '</div>';
+const TAG_CATEGORY_OF = (() => {
+  const map = {};
+  TAG_ONTOLOGY.forEach(entry => { map[entry[0]] = entry[1]; });
+  return map;
+})();
+
+function tagCategory(tag) {
+  if (TAG_CATEGORY_OF[tag]) return TAG_CATEGORY_OF[tag];
+  if (/^(Remote|Hybrid|On-site)$/.test(tag)) return 'location';
+  if (/^(US|UK|Europe|Nordics|ANZ|India|APAC|Canada|LatAm|MEA)$/.test(tag)) return 'location';
+  if (/PPP$/.test(tag)) return 'pay';
+  if (/years$/.test(tag)) return 'experience';
+  return 'seniority';
+}
+
+function tagPosting(row) {
+  const body = row.body || '';
+  const haystack = (row.title + ' ' + body).toLowerCase();
+  const salary = extractSalary(row, body);
+  const locationClass = classifyLocation(row.location + ' ' + body.slice(0, 400));
+  const region = regionOf(row.location);
+  const seniorityRule = SENIORITY_RULES.find(r => r[1].test(row.title));
+  const seniority = seniorityRule ? seniorityRule[0] : 'Mid';
+  const familyRule = FAMILY_RULES.find(r => r[1].test(row.title)) ||
+                     FAMILY_RULES.find(r => r[1].test(haystack));
+
+  // Location, pay and seniority are tags like any other now, so they compete
+  // for a click against Kubernetes and Greenfield instead of sitting in their
+  // own permanent slots. That is the whole point of the change: you rank what
+  // matters on THIS posting, not the same five dimensions forever.
+  const derived = [locationClass, seniority];
+  if (region) derived.push(region);
+  if (salary && salary.band) derived.push(salary.band);
+  const years = experienceTag(body);
+  if (years) derived.push(years);
+
+  const tags = Array.from(new Set(ontologyTags(haystack).concat(derived)));
+  return {
+    id: row.entry.ats + ':' + row.entry.slug + ':' + row.key,
+    company: row.company || row.entry.company,
+    ats: row.entry.ats,
+    title: row.title || '(untitled)',
+    url: row.url || '',
+    location: row.location || '',
+    locationClass: locationClass,
+    region: region,
+    postedAt: row.postedAt || '',
+    family: familyRule ? familyRule[0] : 'Other',
+    seniority: seniority,
+    salary: salary,
+    tags: tags,
+    excerpt: body.slice(0, 320),
+    bodyChars: body.length,
+    ranking: null,
+    ratedAt: '',
+    dismissed: false,
+    hidden: false,
+    firstSeen: new Date().toISOString()
+  };
+}
+
+function hasRanking(job) {
+  return !!(job.ranking && (job.ranking.order || []).length) ||
+         !!(job.ranking && (job.ranking.disliked || []).length);
+}
+
+function rankedJobs() {
+  return Object.values(state.jobs).filter(job => hasRanking(job) || job.dismissed);
+}
+
+/* --------------------------------------------------------------- rendering */
+
+// Rank order is shown as a number on the chip, so the click that produced it is
+// visible and correctable. A second click on a ranked chip removes it from the
+// order; the down-arrow marks it disliked.
+function tagChipsHtml(job) {
+  const ranking = job.ranking || { order: [], disliked: [] };
+  const order = ranking.order || [];
+  const disliked = ranking.disliked || [];
+  const rankable = (job.tags || []).filter(tagIsRankable);
+  if (!rankable.length) return '<div class="tagline muted">No rankable tags on this posting.</div>';
+  const model = tagModel();
+  const chips = rankable.map(tag => {
+    const rank = order.indexOf(tag);
+    const bad = disliked.indexOf(tag) !== -1;
+    const utility = tagUtility(tag);
+    const lean = utility > 0.05 ? ' lean-up' : utility < -0.05 ? ' lean-down' : '';
+    const cls = rank !== -1 ? 'chip ranked' : bad ? 'chip disliked' : 'chip' + lean;
+    const title = tag + ' — on ' + tagCoverage(tag).toLocaleString() + ' postings' +
+      (model.pairs ? ', learned score ' + utility.toFixed(2) : '');
+    return '<button class="' + cls + '" data-tag="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
+      'title="' + esc(title) + '">' +
+      (rank !== -1 ? '<b>' + (rank + 1) + '</b> ' : '') + esc(tag) +
+      '<span class="chipNo" data-dislike="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
+      'title="Mark as something you do not want">' + (bad ? '✕' : '·') + '</span></button>';
+  }).join('');
+  return '<div class="tagline">' + chips + '</div>';
 }
 
 function cardHtml(job, fit, alsoIn) {
-  const cls = fit.matchPct >= 70 ? 'hi' : fit.matchPct >= 45 ? 'mid' : 'lo';
-  const chips = fit.positive.filter(p => tagIsPresentable(p[0]) || p[0].indexOf(':') !== -1).slice(0, 5)
-    .map(p => chipHtml(p, 'pos'))
-    .concat(fit.negative.filter(p => tagIsPresentable(p[0]) || p[0].indexOf(':') !== -1).slice(0, 3)
-      .map(p => chipHtml(p, 'neg')))
-    .join('');
-  const why = fit.usable
-    ? 'from ' + fit.knownFacets.map(f => FACET_LABELS[f].toLowerCase()).join(', ')
-    : 'nothing rated yet';
-  const rated = hasAnyRating(job);
+  const pct = fit.matchPct;
+  const cls = pct === null ? 'lo' : pct >= 80 ? 'hi' : pct >= 50 ? 'mid' : 'lo';
+  const why = !fit.usable
+    ? 'rank a few tags to start'
+    : fit.knownTags + ' of ' + (job.tags || []).filter(tagIsRankable).length + ' tags learned';
+  const ranking = job.ranking || { order: [], disliked: [] };
+  const done = (ranking.order || []).length + (ranking.disliked || []).length;
   return '<article class="card" data-card="' + esc(job.id) + '">' +
     '<h3><a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.title) + '</a></h3>' +
     '<div class="meta"><strong>' + esc(job.company) + '</strong>' +
       '<span class="dot">' + esc(job.location || job.locationClass) +
-        (alsoIn ? ' +' + alsoIn + ' more location' + (alsoIn > 1 ? 's' : '') : '') + '</span>' +
+        (alsoIn ? ' +' + alsoIn + ' more' : '') + '</span>' +
       '<span class="dot">' + esc(relativeAge(job.postedAt)) + '</span></div>' +
     salaryHtml(job) +
-    '<div class="fit"><span class="fitPct ' + cls + '">' + (fit.usable ? fit.matchPct + '%' : '—') + '</span>' +
-      '<span class="fitWhy">predicted fit<br>' + esc(why) + '</span></div>' +
-    (chips ? '<div class="chips">' + chips + '</div>' : '') +
-    '<div class="meta">' + esc(job.family) + ' · ' + esc(job.seniority) +
-      (job.dismissed ? ' · <strong class="dismissed">not for me</strong>' : '') + '</div>' +
-    facetRowsHtml(job, fit) +
+    '<div class="fit"><span class="fitPct ' + cls + '">' +
+      (pct === null ? '—' : pct + '<small>%</small>') + '</span>' +
+      '<span class="fitWhy">' + (pct === null ? 'not ranked yet' : 'better than ' + pct + '% of your pool') +
+      '<br>' + esc(why) + '</span></div>' +
+    tagChipsHtml(job) +
     '<div class="cardFoot">' +
+      '<span class="muted">' + (done ? done + ' ranked' : 'click tags in the order you want them') + '</span>' +
       (job.dismissed
         ? '<button data-restore="' + esc(job.id) + '">undo</button>'
-        : (rated ? '<button data-clear="' + esc(job.id) + '">clear all</button>' : '') +
-          '<button data-hide="' + esc(job.id) + '" title="Rates the role 1 star and hides it">not for me</button>') +
-    '</div>' +
-    '</article>';
+        : (done ? '<button data-clear="' + esc(job.id) + '">clear</button>' : '') +
+          '<button data-hide="' + esc(job.id) + '" title="Weak negative on all its tags, and hides it">not for me</button>') +
+    '</div></article>';
 }
+
+function scoredList(jobs) {
+  const entries = jobs.map(job => ({ job: job, fit: null }));
+  const scores = entries.map(entry => jobScore(entry.job).score);
+  setScoreDistribution(scores);
+  entries.forEach(entry => { entry.fit = predictFit(entry.job); });
+  return entries;
+}
+
 
 // A company posts one role across many cities as separate ATS entries with
 // separate ids, so an unfiltered For You fills its first screen with four copies
@@ -1724,102 +1733,96 @@ function pinnedList(entries) {
   return entries;
 }
 
-function scoredList(jobs) {
-  return jobs.map(job => ({ job: job, fit: predictFit(job) }));
-}
+// Hard ceiling on what is ever put in the DOM at once. Each view slices to its
+// own limit already; this is the backstop for the case where a stale pinned
+// order hands back the whole candidate set, which once produced a 6.9MB grid.
+const RENDER_CEILING = 200;
 
 function renderGrid(entries, emptyMessage) {
   if (!entries.length) return '<div class="empty">' + esc(emptyMessage) + '</div>';
+  if (entries.length > RENDER_CEILING) entries = entries.slice(0, RENDER_CEILING);
   return '<div class="grid">' + entries.map(e =>
     cardHtml(e.job, e.fit, e.alsoIn).replace('<article class="card"',
       '<article class="card" data-also-in="' + (e.alsoIn || 0) + '"')).join('') + '</div>';
 }
 
-function viewForYou() {
-  const candidates = Object.values(state.jobs).filter(j => !hasAnyRating(j) && passesFilters(j));
-  void candidates;
-  const scored = scoredList(candidates);
-  const status = tasteStatus();
+// The resume seeds tag utilities before any ranking exists, using the same
+// closed ontology, so what it produces is directly comparable with what you
+// rank later rather than living in a separate vocabulary.
+function resumeToTagWeights(text) {
+  const haystack = String(text || '').toLowerCase();
+  if (!haystack.trim()) return {};
+  const weights = {};
+  ontologyTags(haystack).forEach(tag => { weights[tag] = 1; });
+  const years = experienceTag(haystack);
+  if (years) weights[years] = 1;
+  return weights;
+}
 
+function viewForYou() {
+  const candidates = Object.values(state.jobs).filter(j => !hasRanking(j) && !j.hidden && passesFilters(j));
   if (!candidates.length) {
     return '<div class="empty">Nothing matches these filters. Loosen one, or refresh postings.</div>';
   }
-
-  // Nothing learned on any facet yet: rank by recency and say what is missing.
-  // Ranking by a model that knows nothing would be ordering by noise while
-  // implying it means something.
-  if (!status.usable) {
-    const note = status.rated
-      ? 'You have rated ' + status.rated + ' posting' + (status.rated === 1 ? '' : 's') +
-        ', but not yet enough on any single facet for it to predict. Salary and Location need only ' +
-        'a couple each, because they fit a preference over numbers the library already holds. ' +
-        'Until then this is newest first.'
-      : 'Rate a few postings and these start ranking by predicted fit. Facets are independent, so ' +
-        'rating just Salary and Location is already enough to order this list. ' +
-        'Until then this is newest first.';
-    const byDate = pinnedList(collapseDuplicates(scored)
-      .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
-    return '<p class="notice">' + esc(note) + '</p>' + renderGrid(byDate.slice(0, 120), '');
-  }
-
-  const ranked = pinnedList(collapseDuplicates(scored)
-    .sort((a, b) => b.fit.predicted - a.fit.predicted ||
-                    b.fit.knownFacets.length - a.fit.knownFacets.length ||
-                    a.job.title.localeCompare(b.job.title)));
-
-  const live = status.live.map(f => FACET_LABELS[f].toLowerCase()).join(', ');
-  const dormant = FACET_KEYS.filter(f => status.live.indexOf(f) === -1);
-  const hint = dormant.length
-    ? ' Nothing rated yet on ' + dormant.map(f => FACET_LABELS[f].toLowerCase()).join(', ') +
-      ', so those do not count toward the ranking.'
-    : '';
-  return '<p class="notice">Ranked on ' + esc(live) + '.' + esc(hint) + '</p>' +
-    renderGrid(ranked.slice(0, 120), '');
-}
-
-// Deliberately not the top of For You. The model learns most from the postings
-// it is least sure about, so this surfaces the ones nearest the middle of the
-// scale, spread across families so one lane cannot dominate the early ratings.
-function viewRate() {
-  const candidates = Object.values(state.jobs).filter(j => !hasAnyRating(j) && passesFilters(j));
   const scored = scoredList(candidates);
   const status = tasteStatus();
-  const unique = collapseDuplicates(scored);
-  if (status.usable) {
-    unique.forEach(e => {
-      e.uncertainty = Math.abs(e.fit.predicted - 3) - e.fit.knownFacets.length;
-    });
-    unique.sort((a, b) => a.uncertainty - b.uncertainty);
-  } else {
-    unique.sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt));
+  if (!status.usable) {
+    const byDate = pinnedList(collapseDuplicates(scored)
+      .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
+    return '<p class="notice">Nothing ranked yet, so this is newest first. On any card, click the ' +
+      'tags in the order you want them — first click is what appeals most. Three clicks on one posting ' +
+      'already teaches the model a dozen comparisons, and every one applies to the whole pool, not ' +
+      'just that job.</p>' + renderGrid(byDate.slice(0, 120), '');
   }
+  const ranked = pinnedList(collapseDuplicates(scored)
+    .sort((a, b) => b.fit.score - a.fit.score ||
+                    b.fit.knownTags - a.fit.knownTags ||
+                    a.job.title.localeCompare(b.job.title)));
+  return '<p class="notice">Ranked from ' + status.pairs.toLocaleString() + ' tag comparisons across ' +
+    status.events + ' posting' + (status.events === 1 ? '' : 's') + ', covering ' + status.tags +
+    ' tags. Percentages are position in this pool, not a predicted rating — you ranked tags against ' +
+    'each other, never scored a job out of five.</p>' + renderGrid(ranked.slice(0, 120), '');
+}
+
+// The postings that would teach the most: those carrying rankable tags the
+// model has never seen a comparison for. Ranking a posting made entirely of
+// tags it already understands confirms what it knows and adds nothing.
+function viewRate() {
+  const candidates = Object.values(state.jobs).filter(j => !hasRanking(j) && !j.hidden && passesFilters(j));
+  if (!candidates.length) return '<div class="empty">Nothing to rank under these filters.</div>';
+  const scored = scoredList(candidates);
+  const model = tagModel();
+  scored.forEach(entry => {
+    const tags = (entry.job.tags || []).filter(tagIsRankable);
+    const unseen = tags.filter(tag => !(tag in model.utility)).length;
+    entry.novelty = unseen + Math.min(tags.length, 12) * 0.1;
+  });
+  const unique = collapseDuplicates(scored).sort((a, b) => b.novelty - a.novelty);
   const perFamily = new Map();
   const spread = [];
-  unique.forEach(e => {
-    const n = perFamily.get(e.job.family) || 0;
+  unique.forEach(entry => {
+    const n = perFamily.get(entry.job.family) || 0;
     if (n >= 3) return;
-    perFamily.set(e.job.family, n + 1);
-    spread.push(e);
+    perFamily.set(entry.job.family, n + 1);
+    spread.push(entry);
   });
-  const counts = FACET_KEYS.map(f => FACET_LABELS[f] + ' ' + status.perFacet[f]).join('  ·  ');
   const pinned = pinnedList(spread.slice(0, 30));
-  return '<p class="notice">Rate these. They sit closest to the middle of the scale, so each rating ' +
-    'teaches the most. Rate only the facets you can actually judge — a posting rated on Salary ' +
-    'alone is still useful, and clicking a star you already set clears it. ' +
-    'Ratings so far: ' + esc(counts) + '</p>' +
-    renderGrid(pinned, 'No unrated postings under these filters.');
+  return '<p class="notice">These carry the most tags the model has never seen compared, so they ' +
+    'teach the most. Click tags in preference order — you never have to rank them all, and the ' +
+    '<b>·</b> on a chip marks a tag you actively do not want. ' + tasteStatus().pairs.toLocaleString() +
+    ' comparisons learned so far.</p>' + renderGrid(pinned, 'Nothing left to rank here.');
 }
 
 function viewRated() {
-  const entries = scoredList(ratedJobs('').filter(job => passesFilters(job, 'rated')))
+  const entries = scoredList(rankedJobs().filter(job => passesFilters(job, 'rated')))
     .sort((a, b) => (b.job.ratedAt || '').localeCompare(a.job.ratedAt || ''));
   const dismissed = entries.filter(e => e.job.dismissed).length;
-  return '<p class="notice">Every card predicts leave-one-out, per facet: the model is retrained ' +
-    'without this posting, then asked to predict it. A facet you rated 5 that predicts low is the ' +
-    'model telling you it has not learned why yet.' +
-    (dismissed ? ' ' + dismissed + ' of these were dismissed with "not for me", which records 1 star ' +
-      'on Role only, at ' + ROW_WEIGHT_DISMISSED + ' the weight of a star you chose.' : '') + '</p>' +
-    renderGrid(entries, 'Nothing rated yet.');
+  return '<p class="notice">Everything you have ranked. Rankings can be changed here and the model ' +
+    'retrains from scratch each time, so nothing is baked in.' +
+    (dismissed ? ' ' + dismissed + ' were dismissed with "not for me", which counts as a weak negative ' +
+      'across all that posting’s tags at ' + DISMISS_WEIGHT + ' weight — it says none of this appealed ' +
+      'without claiming to know which part.' : '') + '</p>' +
+    renderGrid(entries, 'Nothing ranked yet.');
 }
 
 function viewPool() {
@@ -1828,51 +1831,123 @@ function viewPool() {
   return renderGrid(entries.slice(0, 200), 'Pool is empty — hit Refresh postings.');
 }
 
+// The audit. Every tag the model has an opinion about, what that opinion is,
+// and how many postings it moves -- so a wrong weight is visible rather than
+// buried in a percentage.
 function viewTagBrain() {
+  const model = tagModel();
   const status = tasteStatus();
   if (!status.usable) {
-    return '<div class="empty">Nothing learned yet. ' +
-      (status.rated
-        ? 'You have rated ' + status.rated + ' posting' + (status.rated === 1 ? '' : 's') +
-          ', but no facet has enough behind it to predict.'
-        : 'Rate a few postings first.') + '</div>';
+    return '<div class="empty">Nothing learned yet. Rank tags on a few postings and every ' +
+      'comparison shows up here.</div>';
   }
-  const sections = FACET_KEYS.map(facet => {
-    const model = getFacetModel(facet, '');
-    const head = '<h3>' + esc(FACET_LABELS[facet]) + '</h3>';
-    if (!model.evidenceCount) {
-      return head + '<p class="muted">Nothing rated on this facet yet.</p>';
-    }
-    if (model.kind === 'residual' && (model.degenerate || model.evidenceCount < MIN_RATINGS_FOR_MODEL)) {
-      return head + '<p class="muted">' + model.evidenceCount + ' rating' +
-        (model.evidenceCount === 1 ? '' : 's') +
-        (model.degenerate
-          ? ', but all the same, so there is no difference for it to learn from.'
-          : ', needs ' + MIN_RATINGS_FOR_MODEL + '.') + '</p>';
-    }
-    // The tag lane holds signed offsets already; categorical and ordinal facets
-    // hold absolute 1-5 estimates. Both are shown against that facet's own
-    // baseline so the column means the same thing on every table.
-    const rows = Object.keys(model.effects).map(key => [
-      key,
-      model.kind === 'residual' ? model.effects[key] : model.effects[key] - model.baseline
-    ]).filter(pair => Math.abs(pair[1]) > 0.004).sort((a, b) => b[1] - a[1]);
-    if (!rows.length) return head + '<p class="muted">No separation learned yet.</p>';
-    const shown = rows.length > 40 ? rows.slice(0, 30).concat(rows.slice(-10)) : rows;
-    const body = shown.map(pair => {
-      const label = pair[0].replace(/^(company|loc|region|family|seniority|pay):/, '');
-      return '<tr><td>' + esc(label) + '</td><td class="w ' + (pair[1] > 0 ? 'pos' : 'neg') + '">' +
-        (pair[1] > 0 ? '+' : '') + pair[1].toFixed(3) + '</td><td class="w">' +
-        (tagFrequency().counts.get(pair[0]) || '—') + '</td></tr>';
-    }).join('');
-    return '<h3>' + esc(FACET_LABELS[facet]) + ' <span class="muted">' + model.evidenceCount +
-      ' ratings · baseline ' + model.baseline.toFixed(2) + ' / 5</span></h3>' +
-      '<table class="brain"><tr><th>feature</th><th>vs baseline</th><th>seen in</th></tr>' +
-      body + '</table>';
-  }).join('');
-  return '<p class="muted">What each facet has learned, against that facet’s own baseline. ' +
-    'This is the audit: if a weight here is wrong, the ranking is wrong for that reason.</p>' +
-    sections;
+  const rows = Object.keys(model.utility)
+    .map(tag => [tag, model.utility[tag], tagCoverage(tag), tagCategory(tag)])
+    .filter(row => row[2] > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const table = list => '<table class="brain"><tr><th>tag</th><th>category</th>' +
+    '<th>score</th><th>postings</th></tr>' + list.map(row =>
+      '<tr><td>' + esc(row[0]) + '</td><td class="muted">' + esc(TAG_CATEGORIES[row[3]] || row[3]) +
+      '</td><td class="w ' + (row[1] > 0 ? 'pos' : 'neg') + '">' + (row[1] > 0 ? '+' : '') +
+      row[1].toFixed(2) + '</td><td class="w">' + row[2].toLocaleString() + '</td></tr>').join('') +
+    '</table>';
+  const wanted = rows.filter(row => row[1] > 0.02);
+  const unwanted = rows.filter(row => row[1] < -0.02).reverse();
+  return '<p class="muted">' + status.pairs.toLocaleString() + ' comparisons from ' + status.events +
+    ' posting' + (status.events === 1 ? '' : 's') + ', over ' + status.tags + ' tags. A score is ' +
+    'relative: it only means this tag beat or lost to others you ranked.</p>' +
+    (wanted.length ? '<h3>What you want</h3>' + table(wanted.slice(0, 40)) : '') +
+    (unwanted.length ? '<h3>What you do not</h3>' + table(unwanted.slice(0, 25)) : '');
+}
+
+/* ------------------------------------------------------------------ ranking */
+
+function ensureRanking(job) {
+  if (!job.ranking) job.ranking = { order: [], disliked: [] };
+  if (!job.ranking.order) job.ranking.order = [];
+  if (!job.ranking.disliked) job.ranking.disliked = [];
+  return job.ranking;
+}
+
+// Clicking an unranked tag appends it to the order; clicking a ranked one
+// removes it and everything keeps its relative order. A tag cannot be ranked
+// and disliked at once.
+async function rankTag(jobId, tag) {
+  const job = state.jobs[jobId];
+  if (!job) return;
+  const ranking = ensureRanking(job);
+  const at = ranking.order.indexOf(tag);
+  if (at !== -1) ranking.order.splice(at, 1);
+  else {
+    ranking.order.push(tag);
+    const bad = ranking.disliked.indexOf(tag);
+    if (bad !== -1) ranking.disliked.splice(bad, 1);
+  }
+  job.ratedAt = new Date().toISOString();
+  job.dismissed = false;
+  job.hidden = false;
+  invalidateTaste();
+  if (!refreshCard(jobId)) render();
+  renderHeadline();
+  await saveJobs([job]);
+}
+
+async function dislikeTag(jobId, tag) {
+  const job = state.jobs[jobId];
+  if (!job) return;
+  const ranking = ensureRanking(job);
+  const at = ranking.disliked.indexOf(tag);
+  if (at !== -1) ranking.disliked.splice(at, 1);
+  else {
+    ranking.disliked.push(tag);
+    const ranked = ranking.order.indexOf(tag);
+    if (ranked !== -1) ranking.order.splice(ranked, 1);
+  }
+  job.ratedAt = new Date().toISOString();
+  invalidateTaste();
+  if (!refreshCard(jobId)) render();
+  renderHeadline();
+  await saveJobs([job]);
+}
+
+async function clearRanking(id) {
+  const job = state.jobs[id];
+  if (!job) return;
+  job.ranking = { order: [], disliked: [] };
+  job.ratedAt = '';
+  job.dismissed = false;
+  job.hidden = false;
+  invalidateTaste();
+  if (!refreshCard(id)) render();
+  renderHeadline();
+  await saveJobs([job]);
+}
+
+// "Not for me" says none of this appealed, without saying which part. It is
+// admitted as a weak negative over the whole posting rather than a ranking,
+// because guessing which tag was the problem is exactly the attribution error
+// the old single-star model made.
+async function dismissJob(id) {
+  const job = state.jobs[id];
+  if (!job) return;
+  job.dismissed = true;
+  job.hidden = true;
+  job.ratedAt = new Date().toISOString();
+  invalidateTaste();
+  render();
+  await saveJobs([job]);
+}
+
+async function restoreJob(id) {
+  const job = state.jobs[id];
+  if (!job) return;
+  job.dismissed = false;
+  job.hidden = false;
+  job.ranking = { order: [], disliked: [] };
+  job.ratedAt = '';
+  invalidateTaste();
+  render();
+  await saveJobs([job]);
 }
 
 const VIEWS = { foryou: viewForYou, rate: viewRate, rated: viewRated, pool: viewPool, tags: viewTagBrain };
@@ -1912,8 +1987,9 @@ function renderDeck(force) {
 
 function renderHeadline() {
   const jobs = Object.values(state.jobs);
-  const rated = ratedJobs('').length;
-  const parts = [jobs.length.toLocaleString() + ' postings', registry.length + ' companies', rated + ' rated'];
+  const status = tasteStatus();
+  const parts = [jobs.length.toLocaleString() + ' postings', registry.length + ' sources',
+    status.pairs.toLocaleString() + ' comparisons'];
   if (state.settings.resumeSavedAt) parts.push('resume loaded');
   if (state.meta.lastRefresh) parts.push('refreshed ' + relativeAge(state.meta.lastRefresh));
   if (state.filters.salary) {
@@ -1942,7 +2018,8 @@ function render() {
 // asks for a fresh list: switching view, changing a filter, or refreshing.
 function refreshCard(id) {
   const job = state.jobs[id];
-  const node = document.querySelector('[data-card="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  const safe = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : String(id).replace(/"/g, '\\"');
+  const node = document.querySelector('[data-card="' + safe + '"]');
   if (!job || !node) return false;
   const wrapper = document.createElement('div');
   wrapper.innerHTML = cardHtml(job, predictFit(job), Number(node.dataset.alsoIn || 0));
@@ -1953,72 +2030,26 @@ function refreshCard(id) {
   return true;
 }
 
-async function rateFacet(id, facet, rating) {
-  const job = state.jobs[id];
-  if (!job || FACET_KEYS.indexOf(facet) === -1) return;
-  job.ratings = job.ratings || { role: 0, level: 0, company: 0, location: 0, salary: 0 };
-  // Clicking the star already set clears it, so a mis-click is one click to undo.
-  job.ratings[facet] = job.ratings[facet] === rating ? 0 : rating;
-  job.ratedAt = hasAnyRating(job) ? new Date().toISOString() : '';
-  // A deliberate facet rating outranks a one-click dismissal: the posting comes
-  // back into view at full weight, because you have now actually looked at it.
-  if (job.ratings[facet]) { job.dismissed = false; job.hidden = false; }
-  invalidateTaste();
-  // Redraw first, persist after: an IndexedDB write is not something a star
-  // click should wait on.
-  if (!refreshCard(id)) render();
-  renderHeadline();
-  await saveJobs([job]);
-}
-
-// Teaches AND hides. It records a 1 on ROLE only, not on all five: "not for me"
-// on a card you barely read is a judgement about the kind of work, and claiming
-// it also means "this company is bad" or "this salary is bad" would invent
-// opinions from one click -- expensive, since a company blacklisted by three
-// glances is hard to notice and harder to undo. Say more by rating a facet.
-async function dismissJob(id) {
-  const job = state.jobs[id];
-  if (!job) return;
-  job.ratings = job.ratings || { role: 0, level: 0, company: 0, location: 0, salary: 0 };
-  job.ratings.role = DISMISSAL_RATING;
-  job.ratedAt = new Date().toISOString();
-  job.dismissed = true;
-  job.hidden = true;
-  await saveJobs([job]);
-  invalidateTaste();
-  render();
-}
-
-async function restoreJob(id) {
-  const job = state.jobs[id];
-  if (!job) return;
-  job.ratings = { role: 0, level: 0, company: 0, location: 0, salary: 0 };
-  job.ratedAt = '';
-  job.dismissed = false;
-  job.hidden = false;
-  await saveJobs([job]);
-  invalidateTaste();
-  render();
-}
-
 document.addEventListener('click', async event => {
-  const target = event.target.closest('[data-rate],[data-clear],[data-hide],[data-restore],.tab,.chip');
+  const target = event.target.closest('[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],.tab');
   if (!target) return;
   if (target.classList.contains('tab')) {
     state.view = target.dataset.view;
     repinOrder();
     render();
-  } else if (target.dataset.rate) {
-    await rateFacet(target.dataset.id, target.dataset.facet, Number(target.dataset.rate));
+  } else if (target.dataset.dislike) {
+    // The dislike marker sits inside the chip, so it must claim the click
+    // before the chip's own ranking handler sees it.
+    event.stopPropagation();
+    await dislikeTag(target.dataset.job, target.dataset.dislike);
+  } else if (target.dataset.tag) {
+    await rankTag(target.dataset.job, target.dataset.tag);
   } else if (target.dataset.clear) {
-    await restoreJob(target.dataset.clear);
+    await clearRanking(target.dataset.clear);
   } else if (target.dataset.hide) {
     await dismissJob(target.dataset.hide);
   } else if (target.dataset.restore) {
     await restoreJob(target.dataset.restore);
-  } else if (target.classList.contains('chip')) {
-    $('#fText').value = state.filters.text = target.dataset.tag.replace(/^[a-z]+:/, '');
-    render();
   }
 });
 

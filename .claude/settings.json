@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '.claude/gate.sh' commit",
+            "timeout": 30,
+            "statusMessage": "Release gate"
+          }
+        ]
+      }
+    ]
+  }
+}

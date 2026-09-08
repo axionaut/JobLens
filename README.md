@@ -1,8 +1,9 @@
 # JobLens
 
-A job search that learns from ratings instead of keywords. You rate a posting on
-five separate things — **Role, Level, Company, Location, Salary** — 1 to 5 stars
-each, and it learns what you actually want. You *can* give it your resume once
+A job search that learns from ratings instead of keywords. On any posting you
+**click its tags in the order you want them** — `Remote`, `₹60L–1Cr PPP`,
+`Kubernetes`, `Greenfield` — and every click is a comparison that applies to the
+whole corpus, not just that job. You *can* give it your resume once
 for a warmer start; it is optional and the app works fully without it.
 
 Static: `index.html` + `styles.css` + `app.js` + `registry.json`. No build step,
@@ -61,102 +62,75 @@ wrong region is worse than none, because it teaches the Location facet something
 false. About 15% of a European pull still lands unclassified; those simply carry
 no region feature.
 
-## The recommendation logic
+## How the learning works
 
-Ratings are training truth. The residual-learning machinery is ported from
-CineLens (`../Cinelens/app.js`, `spec.md` §8), but the rating model is not: a
-film rating is one coherent thing, and a job rating is not.
+**You rank tags, not jobs.**
 
-Rating a job 2 stars because it is in the wrong city used to teach the model
-that you dislike `python`, `kubernetes`, that company and that seniority — one
-number supervising every lane, with the model left to guess which of them earned
-the mark. It guessed badly, and every muddled weight then muddied every later
-prediction.
+Five fixed facets ran out of road: after twenty postings you have said
+"Location: 4" twenty times, and each repetition carries less than the last. The
+things that actually separate two backend jobs — on-call, greenfield, visa
+sponsorship, the domain — were only ever learned indirectly.
 
-So there are five facets, and each trains only the features it can speak to:
+A star was a statement about *one posting*. **"Remote beats Python" is a
+statement about every posting carrying either tag**, so it transfers across the
+whole corpus the moment you make it. Ranking three tags on a posting carrying
+twelve yields ~50 pairwise comparisons from three clicks, and a ranked `Python`
+immediately moves 452 postings.
 
-| facet | learns | how |
-| --- | --- | --- |
-| **Role** | the work itself | tag weights from the description, 9 residual passes, λ 2.8, lr 0.38 |
-| **Level** | seniority and scope | shrunk mean per family + seniority |
-| **Company** | the employer | shrunk mean per company |
-| **Location** | where and how | shrunk mean per arrangement + region |
-| **Salary** | the pay | ordered curve over the known PPP figure, forced monotone |
+### Tags are a closed vocabulary
 
-Salary and Location are the reason facets beat a single star by more than they
-first appear. Both are objectively known for every posting, so rating them does
-not learn a per-job weight — it fits a preference over a value the library
-already holds, and that preference then applies to every posting including ones
-you never look at. **Two salary ratings teach a threshold across all 12,000.**
+`TAG_ONTOLOGY` — 120 curated entries plus derived structured facts (location,
+region, seniority, pay band, experience floor). Nothing is mined from prose.
 
-Facets are optional per job. Rate what you can judge; an unrated facet
-contributes nothing and is *skipped*, not counted as a neutral 3 — otherwise one
-strong signal would be dragged to the middle by four abstentions. Clicking a star
-you already set clears it.
+The mined tagger could not support ranking. Its commonest tags across 2,499
+postings were `fair chance`, `angeles county` and `chance ordinance` — the Los
+Angeles Fair Chance Ordinance disclaimer, in 30% of postings — plus mangled
+German boilerplate. Only 94 of 10,841 tags (0.9%) sat in a useful frequency
+band. Now: **150 tags, 0 untagged postings, 87% rankable**.
 
-Common tags are damped so wallpaper terms cannot dominate by frequency, and
-postings are length-normalised against the median feature mass so a verbose
-posting cannot outrank a better-matched terse one on volume. Each facet is
-calibrated back to your own 1–5 distribution, so **the percentage is a predicted
-rating** (`((predicted - 1) / 4) × 100`), not a share of matched tags.
+Location, seniority and pay are tags now rather than fixed fields, so they
+compete for a click against Kubernetes and Greenfield.
 
-Rated cards predict **leave-one-out**, per facet: the model is retrained without
-that posting, then asked to predict it. A posting cannot improve its own
-displayed fit by contributing its own ratings. That makes Rated a continuous
-check on the model — a facet you rated 5 that predicts low means it has not
-learned why yet.
+### Only tags worth a click are shown
 
-If every rating you have given is identical, no facet can learn anything: each
-weight comes from `rating − baseline`, and with no spread every residual is
-zero. That case is detected and reported rather than silently producing an empty
-screen.
+Between 0.4% and 30% of the library. Below that a click moves a handful of
+postings; above it the tag cannot discriminate — `On-site` (86%) and `Mid` (48%)
+are excluded. Each chip's tooltip shows how many postings it covers.
 
-### Where the resume fits
+### The learner
 
-Optional, and never asked for — it sits behind a button. Without it the model
-starts from a flat baseline and learns entirely from your ratings, which is the
-main path; with it the first screen is sorted sensibly before you have rated
-anything.
+Bradley-Terry over pairwise comparisons — the same maths as Elo. Clicked beats
+later-clicked, clicked beats unclicked (0.7), anything beats disliked. 24
+passes, lr 0.16 decaying 0.94, L2 shrink. The update is the residual, so a
+comparison the model already predicts teaches almost nothing.
 
-It takes CineLens's manual-tag-preference seat: a small additive term. The one
-change is `RESUME_COLD_START_GAIN` — at zero ratings the resume is the only
-signal and at CineLens's flat unit it spread predictions across nine points,
-true to the model but useless to read, so the term is scaled by how little the
-ratings know and decays as evidence arrives. It never grows with more resume
-text, only shrinks with more ratings, so it cannot outrun what was learned.
+Utilities are always retrained from the stored events, never updated in place,
+so any ranking can be changed or removed and the model rebuilt exactly.
 
-The resume text is never stored. It is converted to tag weights on save and only
-the weights are kept.
+### Percentile, not a rating
 
-## "Not for me"
+A posting scores as the **mean** utility of its rankable tags — mean, not sum,
+so a twenty-tag posting cannot win on volume. The card shows a **percentile
+within your current pool**, because ranking data has no absolute scale: you
+never said a job was 4 out of 5, only that one tag beats another.
 
-It teaches, it does not only hide. The click records **1 star on Role only** — not
-on all five. "Not for me" on a card you barely read is a judgement about the kind
-of work; claiming it also means "this company is bad" would invent four opinions
-from one click, and a company blacklisted by three glances is hard to notice and
-harder to undo. Say more by rating a facet.
+### "Not for me"
 
-It carries `ROW_WEIGHT_DISMISSED` (0.35) of a deliberate star, because the two
-are not equally considered: dismissing happens in bulk, a star is a judgement. At
-equal weight, dismissing 200 sales postings would swamp a dozen considered
-5-stars and drag the baseline toward 1.
-
-The posting is hidden from For You, Rate and Pool, stays visible in Rated with a
-badge, and can be undone. Rating any facet on it promotes it back to full weight.
+A weak negative across all the posting's tags (0.25 weight), plus hiding. It
+deliberately does not guess *which* tag was at fault — that attribution error is
+exactly what the single-star model got wrong.
 
 ## Tabs
 
-- **For You** — ranked by predicted fit. Says which facets it is ranking on, and
-  which are dormant because nothing is rated on them yet.
-- **Rate** — the postings nearest the middle of the scale, capped at 3 per
-  family. These are the ones the model is least sure about, so each rating
-  teaches it most.
-- **Rated** — everything you rated, leave-one-out per facet. Dismissed postings
-  appear here too, badged, with an undo.
+- **For You** — ranked by learned tag utility, shown as a pool percentile.
+- **Rate** — the postings carrying the most tags the model has never seen
+  compared, capped at 3 per family. These teach the most per click.
+- **Rated** — everything you have ranked, changeable; the model retrains from
+  scratch each time. Dismissed postings appear here too, with an undo.
 - **Pool** — everything, newest first.
-- **Tag Brain** — one table per facet: every learned weight against that facet's
-  own baseline. This is the audit. If a weight here is wrong, the ranking is
-  wrong for that reason.
+- **Tag Brain** — every tag the model has an opinion about, its score, and how
+  many postings it moves. This is the audit: a wrong weight is visible here
+  rather than buried in a percentage.
 
 Card order is **pinned** while you rate: a rating redraws only that one card, so
 cards never reorder or vanish under the cursor mid-rating. The list re-sorts when
