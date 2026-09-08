@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -1875,22 +1875,18 @@ function viewForYou() {
   if (!status.usable) {
     const byDate = pinnedList(collapseDuplicates(scored)
       .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
-    return '<p class="notice">Nothing ranked yet, so this is newest first. On any card, left-click the ' +
-      'tags in the order you want them — first click is what appeals most — and right-click to rank ' +
-      'from the other end, first right-click being the worst thing on the posting. Three clicks on one ' +
-      'posting already teaches the model a dozen comparisons, and every one applies to the whole pool, ' +
-      'not just that job.</p>' + renderGrid(byDate.slice(0, 120), '');
+    return '<p class="notice"><b>Nothing ranked yet — newest first.</b> On any card, ' +
+      '<b>left-click</b> tags best-first; <b>right-click</b> ranks from the worst end. Every click is ' +
+      'a comparison that applies to all ' + Object.keys(state.jobs).length.toLocaleString() +
+      ' postings, not just that one.</p>' + renderGrid(byDate.slice(0, 120), '');
   }
   const ranked = pinnedList(collapseDuplicates(scored)
     .sort((a, b) => b.fit.score - a.fit.score ||
                     b.fit.knownTags - a.fit.knownTags ||
                     a.job.title.localeCompare(b.job.title)));
-  return '<p class="notice">Ranked from ' + status.pairs.toLocaleString() + ' tag comparisons across ' +
-    status.events + ' posting' + (status.events === 1 ? '' : 's') + ', covering ' + status.tags +
-    ' tags. Percentages are position in this pool, not a predicted rating — you ranked tags against ' +
-    'each other, never scored a job out of five. Every percentage here is live; the ORDER holds still ' +
-    'while you rank so cards do not jump under the cursor.' + resortHtml() + '</p>' +
-    renderGrid(ranked.slice(0, 120), '');
+  return '<p class="notice">Ranked from ' + status.pairs.toLocaleString() + ' comparisons over ' +
+    status.tags + ' tags. <span class="muted">% is position in this pool, not a rating.</span>' +
+    resortHtml() + '</p>' + renderGrid(ranked.slice(0, 120), '');
 }
 
 // The postings that would teach the most: those carrying rankable tags the
@@ -1916,22 +1912,19 @@ function viewRate() {
     spread.push(entry);
   });
   const pinned = pinnedList(spread.slice(0, 30));
-  return '<p class="notice">These carry the most tags the model has never seen compared, so they ' +
-    'teach the most. Click tags in preference order — you never have to rank them all, and the ' +
-    '<b>·</b> on a chip marks a tag you actively do not want. ' + tasteStatus().pairs.toLocaleString() +
-    ' comparisons learned so far.' + resortHtml() + '</p>' +
-    renderGrid(pinned, 'Nothing left to rank here.');
+  return '<p class="notice">These carry the most tags never yet compared, so they teach the most. ' +
+    '<span class="muted">Left-click best-first, right-click worst-first, <b>·</b> marks a tag you ' +
+    'never want.</span>' + resortHtml() + '</p>' + renderGrid(pinned, 'Nothing left to rank here.');
 }
 
 function viewRated() {
   const entries = scoredList(rankedJobs().filter(job => passesFilters(job, 'rated')))
     .sort((a, b) => (b.job.ratedAt || '').localeCompare(a.job.ratedAt || ''));
   const dismissed = entries.filter(e => e.job.dismissed).length;
-  return '<p class="notice">Everything you have ranked. Rankings can be changed here and the model ' +
-    'retrains from scratch each time, so nothing is baked in.' +
-    (dismissed ? ' ' + dismissed + ' were dismissed with "not for me", which counts as a weak negative ' +
-      'across all that posting’s tags at ' + DISMISS_WEIGHT + ' weight — it says none of this appealed ' +
-      'without claiming to know which part.' : '') + '</p>' +
+  return '<p class="notice">Everything you have ranked — change anything here and the model ' +
+    'retrains from scratch.' + (dismissed ? ' <span class="muted">' + dismissed +
+      ' dismissed with “not for me” (weak negative at ' + DISMISS_WEIGHT +
+      ' across all their tags).</span>' : '') + '</p>' +
     renderGrid(entries, 'Nothing ranked yet.');
 }
 
@@ -2136,26 +2129,108 @@ function renderDeck(force) {
   fillSelect($('#fLocation'), uniq('locationClass'), state.filters.location, 'Anywhere');
 }
 
+// What is actually filtering the list, named, with each one its own undo. The
+// filter row can be folded away, so the state it holds has to be legible from
+// the bar itself -- and even unfolded, five selects gave no answer to "why am I
+// only seeing 8,000 of 16,000 postings" without inspecting every one.
+const FILTER_LABELS = {
+  text: 'Search', seniority: 'Level', location: 'Location',
+  salary: 'Salary', age: 'Posted'
+};
+// What "off" is for each control. Note salary: '' is Any, i.e. no filtering at
+// all -- 'has' is merely the value it SHIPS with, which is a different thing.
+// Comparing against the shipped value instead of against off listed Any as an
+// active filter, so a pill appeared that could not be removed: clearing it set
+// salary to '' and '' was what it already was.
+const FILTER_OFF = { text: '', seniority: '', location: '', salary: '', age: 0 };
+
+function filterValueText(key, value) {
+  if (key === 'age') return value + 'd';
+  if (key === 'salary') {
+    if (value === 'has') return 'has salary';
+    if (!value) return 'any';
+    return '\u2265 \u20b9' + value + 'L PPP';
+  }
+  return String(value);
+}
+
+// 'Has salary only' ships on, so it is not something the user chose -- but it
+// hides 7,869 of 16,228 postings, an effect far too large to leave unnamed. It
+// is listed and clearable like any other filter.
+function activeFilters() {
+  return Object.keys(FILTER_LABELS)
+    .filter(key => String(state.filters[key] || '') !== String(FILTER_OFF[key] || ''))
+    .map(key => [key, state.filters[key]]);
+}
+
+function renderFilterState() {
+  const active = activeFilters();
+  const count = $('#filterCount');
+  count.textContent = active.length;
+  count.hidden = !active.length;
+  $('#btnClearFilters').hidden = !active.length;
+  $('#activePills').innerHTML = active.map(pair =>
+    '<button class="pill" data-unfilter="' + esc(pair[0]) + '" title="Remove this filter">' +
+    '<b>' + esc(FILTER_LABELS[pair[0]]) + '</b> ' + esc(filterValueText(pair[0], pair[1])) +
+    ' <i>\u00d7</i></button>').join('');
+}
+
+async function setFilter(key, value) {
+  state.filters[key] = value;
+  const input = { text: '#fText', seniority: '#fSeniority', location: '#fLocation',
+                  salary: '#fSalary', age: '#fAge' }[key];
+  if (input) $(input).value = value;
+  if (key === 'salary') {
+    state.settings.salaryFilter = value;
+    await saveMeta();
+  }
+  repinOrder();
+  render();
+}
+
+async function clearAllFilters() {
+  // Salary clears to Any, not back to 'Has salary only': someone pressing
+  // "clear all" wants to stop hiding postings, not to restore a hiding rule.
+  const inputs = { text: '#fText', seniority: '#fSeniority', location: '#fLocation',
+                   age: '#fAge', salary: '#fSalary' };
+  Object.keys(inputs).forEach(key => {
+    state.filters[key] = FILTER_OFF[key];
+    $(inputs[key]).value = FILTER_OFF[key];
+  });
+  state.settings.salaryFilter = '';
+  await saveMeta();
+  repinOrder();
+  render();
+}
+
 function renderHeadline() {
   const jobs = Object.values(state.jobs);
   const status = tasteStatus();
-  const parts = [jobs.length.toLocaleString() + ' postings', registry.length + ' sources',
-    status.pairs.toLocaleString() + ' comparisons'];
+  const shown = jobs.filter(job => !job.hidden && passesFilters(job)).length;
+  // Leads with what the list in front of you actually contains. The old line
+  // opened with the library total, which is the one number that never explains
+  // anything about the screen -- and the count hidden by the salary filter now
+  // lives on that filter's own pill.
+  const parts = [shown.toLocaleString() + ' of ' + jobs.length.toLocaleString() + ' shown',
+    status.pairs.toLocaleString() + ' comparisons', registry.length + ' sources'];
   if (state.settings.resumeSavedAt) parts.push('resume loaded');
-  if (state.meta.lastRefresh) parts.push('refreshed ' + relativeAge(state.meta.lastRefresh));
-  if (state.filters.salary) {
-    const noSalary = jobs.filter(job => !job.salary && !job.hidden).length;
-    if (noSalary) parts.push(noSalary.toLocaleString() + ' hidden for no stated salary');
-  }
+  if (state.meta.lastRefresh) parts.push(relativeAge(state.meta.lastRefresh));
   if (storageDegraded) parts.push('NOT SAVING — ' + storageDegraded);
   $('#headline').textContent = parts.join('  ·  ');
 }
 
 function render() {
-  document.querySelectorAll('.tab').forEach(tab =>
-    tab.classList.toggle('active', tab.dataset.view === state.view));
+  document.querySelectorAll('.tab').forEach(tab => {
+    const on = tab.dataset.view === state.view;
+    tab.classList.toggle('active', on);
+    // role=tab without aria-selected tells a screen reader there are five tabs
+    // and nothing about which one you are on.
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
+  });
   renderDeck();
   renderHeadline();
+  renderFilterState();
   $('#main').innerHTML = (VIEWS[state.view] || viewForYou)();
 }
 
@@ -2199,7 +2274,8 @@ function refreshCard(id) {
 
 document.addEventListener('click', async event => {
   const target = event.target.closest(
-    '[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],[data-repin],.tab');
+    '[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],[data-repin],' +
+    '[data-unfilter],.tab');
   if (!target) return;
   if (target.classList.contains('tab')) {
     state.view = target.dataset.view;
@@ -2221,6 +2297,8 @@ document.addEventListener('click', async event => {
   } else if (target.dataset.repin) {
     repinOrder();
     render();
+  } else if (target.dataset.unfilter) {
+    await setFilter(target.dataset.unfilter, FILTER_OFF[target.dataset.unfilter]);
   }
 });
 
@@ -2241,6 +2319,48 @@ function bindFilter(sel, key, cast) {
     repinOrder();
     render();
   });
+}
+
+// A tablist is expected to move focus with the arrow keys, with the group
+// occupying ONE tab stop. Five separate tab stops that ignore the arrows is
+// what the markup did before role="tab" was on it, and adding the role without
+// the behaviour is worse than not claiming it at all.
+function bindTabs() {
+  const tabs = Array.from(document.querySelectorAll('#tabs .tab'));
+  $('#tabs').addEventListener('keydown', event => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    const jump = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+    if (!step && jump === -1) return;
+    event.preventDefault();
+    const at = tabs.indexOf(document.activeElement);
+    const next = jump !== -1 ? jump
+      : tabs[(at + step + tabs.length) % tabs.length] ? (at + step + tabs.length) % tabs.length : 0;
+    tabs[next].focus();
+    state.view = tabs[next].dataset.view;
+    repinOrder();
+    render();
+  });
+}
+
+function bindFilterBar() {
+  const deck = $('#deck');
+  const toggle = $('#btnFilters');
+  // Folded state is remembered, because whether you want the row is a property
+  // of how you work, not of this page load.
+  const stored = state.settings.filtersOpen;
+  let open = stored === undefined ? true : !!stored;
+  const paint = () => {
+    deck.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  paint();
+  toggle.addEventListener('click', async () => {
+    open = !open;
+    state.settings.filtersOpen = open;
+    paint();
+    await saveMeta();
+  });
+  $('#btnClearFilters').addEventListener('click', clearAllFilters);
 }
 
 function bindResume() {
@@ -2266,7 +2386,12 @@ function bindResume() {
     render();
   });
   $('#resumeClear').addEventListener('click', async () => {
-    state.settings = { resumeTags: {}, resumeSavedAt: '', resumeChars: 0 };
+    // Only the resume keys. Replacing the whole settings object also threw away
+    // salaryFilter and the folded-filters preference, so clearing a resume
+    // silently reset the salary filter to its default.
+    state.settings.resumeTags = {};
+    state.settings.resumeSavedAt = '';
+    state.settings.resumeChars = 0;
     $('#resumeText').value = '';
     await saveMeta();
     invalidateTaste();
@@ -2313,6 +2438,8 @@ async function init() {
     repinOrder();
     render();
   });
+  bindTabs();
+  bindFilterBar();
   bindResume();
   $('#btnRefresh').addEventListener('click', refreshPostings);
   $('#btnStop').addEventListener('click', () => { refreshAbort = true; });

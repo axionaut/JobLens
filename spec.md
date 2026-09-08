@@ -235,3 +235,61 @@ equal. Before any ranking every posting scores 0, and the binary search dutifull
 returned 0, so every card read "better than 0% of your pool". A percentile over
 a flat distribution is not a weak signal, it is a meaningless one; the card
 already renders `—` for null.
+
+## 5. The top bar
+
+### 5.1 Only the filters were sticky
+
+`#appHeader` (brand, tabs, headline) was not sticky at all; `.deck` was, at
+`top:0`. So scrolling took the tabs and the counts off screen and left a filter
+row stuck to the top of the viewport under nothing. Four stacked bands cost
+~190px before the first card.
+
+Now one `#topbar` holds all of it and sticks as a unit: a dense row of
+brand / tabs / actions, a stats row, and a filter row that folds. 136px open,
+80px folded, against ~190px that did not stay.
+
+### 5.2 Filters say what they are doing
+
+Five selects gave no answer to "why am I seeing 8,000 of 16,000 postings"
+without inspecting each one. Every active filter is now a pill naming its value,
+and clicking a pill removes that filter. `Filters` carries a count and folds the
+row; `Clear all` resets them.
+
+`Has salary only` ships on and hid 7,869 of 16,228 postings without ever being
+chosen. It is listed as a pill like any other, and `Clear all` takes salary to
+Any rather than back to it -- clearing filters means stop hiding postings, not
+restore a hiding rule.
+
+Note the distinction the first attempt got wrong: `''` (Any) is OFF for the
+salary filter, `'has'` is merely the value it ships with. Comparing against the
+shipped value listed Any as active, producing a pill that could not be removed
+because clearing it set the value it already had.
+
+The headline now leads with `N of M shown` -- what is on screen -- instead of
+the library total, which never explained anything about the screen.
+
+### 5.3 Accessibility
+
+- `#topbar` is sticky, so the tabs and filters are reachable at any scroll.
+- `role="tablist"` / `role="tab"` with `aria-selected` maintained on render, and
+  arrow-key/Home/End navigation. The roles without the key handling would have
+  been a regression: it claims behaviour a screen-reader user then expects.
+- The tab group is one tab stop (`tabIndex` -1 on inactive tabs), per the
+  tablist pattern, rather than five.
+- `:focus-visible` outlines. The custom backgrounds had all but erased the
+  browser default, so keyboard focus was invisible.
+- A skip link to `#main`.
+- `aria-live="polite"` on the headline, `aria-expanded` on the filter toggle.
+
+### 5.4 Notices
+
+Every view opened with a paragraph, re-rendered on every click, in a colour that
+demands to be read first. They are now one line each, with the qualifications
+in muted text.
+
+### 5.5 Clearing a resume wiped unrelated settings
+
+`resumeClear` assigned a whole new `state.settings` object, dropping
+`salaryFilter` (and now `filtersOpen`) with it, so clearing a resume silently
+reset the salary filter. It now clears only the three resume keys.
