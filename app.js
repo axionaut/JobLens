@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -1187,9 +1187,15 @@ function tagModel() {
   return tagUtilityCache;
 }
 
+// One cache line per posting, thrown away whenever the model or the library
+// changes. Everything below reads scores through jobScore, so this is the only
+// place staleness could enter.
+let scoreCache = new Map();
+
 function invalidateTaste() {
   tagUtilityCache = null;
   tagFrequencyCache = null;
+  scoreCache = new Map();
 }
 
 function tagUtility(tag) {
@@ -1217,27 +1223,26 @@ function tagCoverage(tag) {
 // twenty-tag posting from beating a six-tag one on volume alone. The resume
 // still contributes, fading as real rankings arrive.
 function jobScore(job) {
+  const hit = scoreCache.get(job.id);
+  if (hit) return hit;
   const tags = (job.tags || []).filter(tagIsRankable);
-  if (!tags.length) return { score: 0, known: 0, positive: [], negative: [] };
   const model = tagModel();
-  const scale = resumeEvidenceScale(model.events);
-  let total = 0, known = 0;
-  const contributions = [];
-  tags.forEach(tag => {
-    const learned = tagUtility(tag);
-    const resume = resumeTagEffect(tag, model.events) * scale * 0.5;
-    const value = learned + resume;
-    total += value;
-    if (learned !== 0) known++;
-    contributions.push([tag, value]);
-  });
-  contributions.sort((a, b) => b[1] - a[1]);
-  return {
-    score: total / tags.length,
-    known: known,
-    positive: contributions.filter(pair => pair[1] > 0.02),
-    negative: contributions.filter(pair => pair[1] < -0.02).reverse()
-  };
+  let out;
+  if (!tags.length) out = { score: 0, known: 0, rankable: 0 };
+  else {
+    // Hoisted: this was recomputed per tag inside resumeTagEffect and then
+    // multiplied by itself again at the call site.
+    const scale = resumeEvidenceScale(model.events);
+    let total = 0, known = 0;
+    tags.forEach(tag => {
+      const learned = tagUtility(tag);
+      total += learned + resumeTagEffect(tag, model.events) * scale * 0.5;
+      if (learned !== 0) known++;
+    });
+    out = { score: total / tags.length, known: known, rankable: tags.length };
+  }
+  scoreCache.set(job.id, out);
+  return out;
 }
 
 // Percentile, not a predicted rating. Ranking data carries no absolute scale --
@@ -1252,6 +1257,11 @@ function setScoreDistribution(scores) {
 
 function scorePercentile(score) {
   if (!scoreDistribution || !scoreDistribution.length) return null;
+  // Every posting scoring the same means the model has nothing to say about any
+  // of them, and a percentile over a flat distribution is not a weak signal but
+  // a meaningless one -- it read "better than 0% of your pool" on every card
+  // before anything had been ranked. The card renders a dash for null.
+  if (scoreDistribution[0] === scoreDistribution[scoreDistribution.length - 1]) return null;
   let lo = 0, hi = scoreDistribution.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
@@ -1268,8 +1278,7 @@ function predictFit(job) {
     score: scored.score,
     matchPct: percentile === null ? null : percentile,
     knownTags: scored.known,
-    positive: scored.positive,
-    negative: scored.negative,
+    rankableTags: scored.rankable,
     usable: model.pairs > 0,
     events: model.events,
     pairs: model.pairs
@@ -1700,7 +1709,7 @@ function cardHtml(job, fit, alsoIn) {
   const cls = pct === null ? 'lo' : pct >= 80 ? 'hi' : pct >= 50 ? 'mid' : 'lo';
   const why = !fit.usable
     ? 'rank a few tags to start'
-    : fit.knownTags + ' of ' + (job.tags || []).filter(tagIsRankable).length + ' tags learned';
+    : fit.knownTags + ' of ' + fit.rankableTags + ' tags learned';
   const ranking = job.ranking || { order: [], bottom: [], disliked: [] };
   const done = (ranking.order || []).length + (ranking.bottom || []).length +
                (ranking.disliked || []).length;
@@ -1726,10 +1735,13 @@ function cardHtml(job, fit, alsoIn) {
     '</div></article>';
 }
 
+// The distribution has to span the whole candidate pool, because the card shows
+// a percentile within it -- so every posting is scored even though only ~120 are
+// drawn. jobScore is memoised, so the predictFit pass below is a cache hit each
+// time rather than a second full scoring of the corpus.
 function scoredList(jobs) {
   const entries = jobs.map(job => ({ job: job, fit: null }));
-  const scores = entries.map(entry => jobScore(entry.job).score);
-  setScoreDistribution(scores);
+  setScoreDistribution(entries.map(entry => jobScore(entry.job).score));
   entries.forEach(entry => { entry.fit = predictFit(entry.job); });
   return entries;
 }
@@ -1756,19 +1768,25 @@ function collapseDuplicates(entries) {
   return Array.from(best.values());
 }
 
-// Rating re-renders, and a re-render re-sorts. With one star per card that was
-// merely jarring; with five facets it breaks the interaction outright, because
-// the moment you rate ONE facet the card stops being "unrated" and vanishes
-// before you can rate the other four -- and in For You the remaining cards
-// reorder under the cursor, so the next click lands on a different job.
+// The surfaced ORDER is pinned; the scores on it are not.
 //
-// So the surfaced order is pinned. The first render of a view computes the
-// order; subsequent renders reuse it, keeping cards in place and letting their
-// stars fill in where they sit. It recomputes when the view or the filters
-// change, which is the moment the user is asking for a fresh list anyway.
+// Order has to be pinned because a ranked posting leaves the For You candidate
+// pool the moment it is ranked -- so a re-sort on every click would pull the
+// card out from under the cursor mid-ranking, and the next click would land on
+// a different job. That was true with five facets and is still true now.
+//
+// What was wrong was freezing the NUMBERS along with the order. Only the clicked
+// card was redrawn, so every other percentage on screen kept describing a model
+// two or ten rankings out of date, with nothing to say so. Now a ranking
+// schedules a full re-render (see scheduleRescore): same order, every visible
+// percentage recomputed. Positions hold, values move.
+//
+// `pinnedDrift` counts how far the pinned order has fallen behind the scores, so
+// the view can offer a re-sort instead of silently deciding for the user.
 // Dismissed and hidden postings are dropped from the pin, because "not for me"
 // is an explicit request to remove the card.
 let pinnedOrder = { key: '', ids: [] };
+let pinnedDrift = 0;
 
 function viewKey() {
   const f = state.filters;
@@ -1777,6 +1795,10 @@ function viewKey() {
 
 function repinOrder() {
   pinnedOrder = { key: '', ids: [] };
+  pinnedDrift = 0;
+  // A rescore still in flight would land on the list a moment after it was
+  // re-sorted or refiltered and quietly undo it.
+  if (rescoreTimer) { clearTimeout(rescoreTimer); rescoreTimer = null; }
 }
 
 function pinnedList(entries) {
@@ -1790,10 +1812,31 @@ function pinnedList(entries) {
       const entry = byId.get(id) || { job: job, fit: predictFit(job) };
       kept.push(entry);
     });
+    // `entries` arrives already sorted the way the view wants it, so the two
+    // sequences differ exactly where the pin has gone stale. Cards absent from
+    // the fresh list (just ranked, so out of the candidate pool) are skipped:
+    // they are being held in place deliberately and are not drift.
+    const fresh = entries.map(entry => entry.job.id).filter(id => {
+      const job = state.jobs[id];
+      return job && !job.hidden;
+    });
+    const held = kept.map(entry => entry.job.id).filter(id => byId.has(id));
+    pinnedDrift = held.reduce((n, id, i) => n + (fresh[i] === id ? 0 : 1), 0);
     return kept;
   }
   pinnedOrder = { key: key, ids: entries.map(entry => entry.job.id) };
+  pinnedDrift = 0;
   return entries;
+}
+
+// Offered rather than applied. The order is deliberately stable while you are
+// ranking, so the re-sort is a thing you ask for -- but it has to be visible,
+// because a list silently sorted two rankings ago looks exactly like a list
+// that disagrees with you.
+function resortHtml() {
+  if (!pinnedDrift) return '';
+  return ' <button class="resort" data-repin="1">re-sort \u2014 ' + pinnedDrift +
+    ' card' + (pinnedDrift === 1 ? '' : 's') + ' moved</button>';
 }
 
 // Hard ceiling on what is ever put in the DOM at once. Each view slices to its
@@ -1845,7 +1888,9 @@ function viewForYou() {
   return '<p class="notice">Ranked from ' + status.pairs.toLocaleString() + ' tag comparisons across ' +
     status.events + ' posting' + (status.events === 1 ? '' : 's') + ', covering ' + status.tags +
     ' tags. Percentages are position in this pool, not a predicted rating — you ranked tags against ' +
-    'each other, never scored a job out of five.</p>' + renderGrid(ranked.slice(0, 120), '');
+    'each other, never scored a job out of five. Every percentage here is live; the ORDER holds still ' +
+    'while you rank so cards do not jump under the cursor.' + resortHtml() + '</p>' +
+    renderGrid(ranked.slice(0, 120), '');
 }
 
 // The postings that would teach the most: those carrying rankable tags the
@@ -1874,7 +1919,8 @@ function viewRate() {
   return '<p class="notice">These carry the most tags the model has never seen compared, so they ' +
     'teach the most. Click tags in preference order — you never have to rank them all, and the ' +
     '<b>·</b> on a chip marks a tag you actively do not want. ' + tasteStatus().pairs.toLocaleString() +
-    ' comparisons learned so far.</p>' + renderGrid(pinned, 'Nothing left to rank here.');
+    ' comparisons learned so far.' + resortHtml() + '</p>' +
+    renderGrid(pinned, 'Nothing left to rank here.');
 }
 
 function viewRated() {
@@ -1967,6 +2013,7 @@ async function rankTag(jobId, tag, fromBottom) {
   invalidateTaste();
   if (!refreshCard(jobId)) render();
   renderHeadline();
+  scheduleRescore();
   await saveJobs([job]);
 }
 
@@ -1987,6 +2034,7 @@ async function dislikeTag(jobId, tag) {
   invalidateTaste();
   if (!refreshCard(jobId)) render();
   renderHeadline();
+  scheduleRescore();
   await saveJobs([job]);
 }
 
@@ -2000,6 +2048,7 @@ async function clearRanking(id) {
   invalidateTaste();
   if (!refreshCard(id)) render();
   renderHeadline();
+  scheduleRescore();
   await saveJobs([job]);
 }
 
@@ -2112,12 +2161,28 @@ function render() {
 
 /* ------------------------------------------------------------------- wiring */
 
-// A rating changes the models, so in principle every card on screen is stale.
-// Re-rendering all of them costs a full rescore of the candidate set -- 1.5s at
-// 60 ratings, on every click -- and throws away the pinned order the user is
-// mid-way through reading. So only the card just clicked is redrawn. The rest
-// pick up the new model on the next full render, which is exactly when the user
-// asks for a fresh list: switching view, changing a filter, or refreshing.
+// A ranking moves every score, so every card on screen goes stale, not only the
+// one clicked. Both halves of that are now handled: the clicked card is redrawn
+// at once, because that is the feedback for the click itself, and a full
+// re-render is scheduled for when the burst of clicks stops -- same pinned
+// order, every visible percentage recomputed.
+//
+// The old comment justified skipping this with "1.5s at 60 ratings". Re-measured
+// at the size this actually runs at -- 16,224 postings, 300 rankings -- a full
+// re-render is ~180ms, most of it retraining. It was ~490ms before jobScore was
+// memoised, and the corpus was being scored twice per render to fill two fields
+// (fit.positive / fit.negative) that nothing ever read.
+const RESCORE_DELAY = 220;
+let rescoreTimer = null;
+
+function scheduleRescore() {
+  if (rescoreTimer) clearTimeout(rescoreTimer);
+  rescoreTimer = setTimeout(() => {
+    rescoreTimer = null;
+    render();
+  }, RESCORE_DELAY);
+}
+
 function refreshCard(id) {
   const job = state.jobs[id];
   const safe = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : String(id).replace(/"/g, '\\"');
@@ -2133,7 +2198,8 @@ function refreshCard(id) {
 }
 
 document.addEventListener('click', async event => {
-  const target = event.target.closest('[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],.tab');
+  const target = event.target.closest(
+    '[data-dislike],[data-tag],[data-clear],[data-hide],[data-restore],[data-repin],.tab');
   if (!target) return;
   if (target.classList.contains('tab')) {
     state.view = target.dataset.view;
@@ -2152,6 +2218,9 @@ document.addEventListener('click', async event => {
     await dismissJob(target.dataset.hide);
   } else if (target.dataset.restore) {
     await restoreJob(target.dataset.restore);
+  } else if (target.dataset.repin) {
+    repinOrder();
+    render();
   }
 });
 

@@ -128,7 +128,17 @@ so any ranking can be changed or removed and the model rebuilt exactly.
 A posting scores as the **mean** utility of its rankable tags — mean, not sum,
 so a twenty-tag posting cannot win on volume. The card shows a **percentile
 within your current pool**, because ranking data has no absolute scale: you
-never said a job was 4 out of 5, only that one tag beats another.
+never said a job was 4 out of 5, only that one tag beats another. A pool where
+every posting scores the same shows `—`, not 0%.
+
+### Live scores, still order
+
+Every percentage on screen refreshes when you rank something — a full rescore
+lands ~220ms after your last click. The **order** deliberately holds still,
+because a ranked posting leaves the For You pool the moment you rank it, so
+re-sorting mid-click would pull the card out from under your cursor. When the
+pinned order has fallen behind the scores, the view offers
+`re-sort — N cards moved`. It never does it to you unasked.
 
 ### "Not for me"
 

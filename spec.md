@@ -178,3 +178,60 @@ fallback text is `vN`, all three tracking `APP_VERSION`.
 The gate checks all three on any commit touching `app.js`. A bump that forgets
 the cache-buster is worse than no bump, because every local check passes and the
 deployed page is unchanged.
+
+## 4. Live scores, pinned order
+
+### 4.1 What was actually frozen
+
+Two separate freezes, only one of them intended.
+
+`pinnedOrder` freezes the surfaced ORDER until the view or filters change. That
+is correct and stays: a posting leaves the For You candidate pool the instant it
+is ranked, so re-sorting on every click would pull the card out from under the
+cursor mid-ranking and the next click would land on a different job.
+
+`refreshCard` redrew only the card just clicked. Every other percentage on
+screen kept describing a model several rankings out of date, with nothing on the
+page to say so. That was never a design decision, only a cost dodge -- the
+comment justified it as "1.5s at 60 ratings".
+
+### 4.2 The cost that justified it
+
+Re-measured at the size it actually runs at (16,224 postings, harness in
+`node`), a full re-render was ~400ms at 27 rankings and ~490ms at 300. Two
+causes, both waste:
+
+- `scoredList` called `jobScore` for the percentile distribution and then
+  `predictFit`, which calls `jobScore` again -- 32,448 scorings per render.
+- Every scoring sorted a contributions array and ran two filters to fill
+  `fit.positive` and `fit.negative`, which **nothing has ever read**.
+
+`jobScore` is now memoised per posting on a cache cleared by `invalidateTaste`,
+the breakdown fields are gone, and `resumeEvidenceScale` is hoisted out of the
+per-tag loop. A full re-render is now ~82ms at 27 rankings and ~144ms at 300,
+dominated by retraining rather than scoring.
+
+### 4.3 Scheduled rescore
+
+A ranking redraws the clicked card immediately -- that is the feedback for the
+click -- and schedules a full re-render `RESCORE_DELAY` (220ms) after the last
+click in a burst. Same pinned order, every visible percentage recomputed.
+`repinOrder` cancels a pending rescore, so one in flight cannot land on a list
+the user has just re-sorted or refiltered and quietly undo it.
+
+### 4.4 Drift is offered, not applied
+
+`pinnedDrift` counts the positions where the pinned order disagrees with the
+freshly scored order. Cards absent from the fresh list -- just ranked, so out of
+the candidate pool -- are excluded: they are held in place deliberately. When it
+is non-zero, For You and Rate carry a `re-sort — N cards moved` button. The list
+never reorders itself, because a list silently sorted two rankings ago looks
+exactly like a list that disagrees with you.
+
+### 4.5 Flat distributions have no percentile
+
+`scorePercentile` returns null when the lowest and highest score in the pool are
+equal. Before any ranking every posting scores 0, and the binary search dutifully
+returned 0, so every card read "better than 0% of your pool". A percentile over
+a flat distribution is not a weak signal, it is a meaningless one; the card
+already renders `—` for null.
