@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -158,7 +158,8 @@ async function loadState() {
   jobs.forEach(job => {
     delete job.rating;
     delete job.ratings;
-    if (!job.ranking) job.ranking = { order: [], disliked: [] };
+    if (!job.ranking) job.ranking = { order: [], bottom: [], disliked: [] };
+    if (!job.ranking.bottom) job.ranking.bottom = [];
     state.jobs[job.id] = job;
   });
   const kv = await new Promise((res, rej) => {
@@ -775,7 +776,8 @@ function salaryHtml(job) {
 
 const TAG_CATEGORIES = {
   work: 'Work', tech: 'Tech', domain: 'Domain', seniority: 'Seniority',
-  experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions'
+  experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions',
+  family: 'Role family'
 };
 
 const w = body => new RegExp('(^|[^a-z0-9+#.])' + body + '([^a-z0-9+#]|$)', 'i');
@@ -1074,34 +1076,72 @@ const DISMISS_WEIGHT = 0.25;
 const TAG_BAND_MIN = 0.004;
 const TAG_BAND_MAX = 0.30;
 
+// Only the tags the card actually offered are admitted. A tag outside the
+// rankable band was never on screen, so a dismissal cannot be read as an
+// opinion about it.
 function rankingEvents() {
   const events = [];
   Object.values(state.jobs).forEach(job => {
-    if (job.ranking && (job.ranking.order || []).length) {
-      events.push({ order: job.ranking.order, disliked: job.ranking.disliked || [], pool: job.tags || [], weight: 1 });
+    const pool = (job.tags || []).filter(tagIsRankable);
+    const ranking = job.ranking;
+    const explicit = ranking && ((ranking.order || []).length ||
+                                 (ranking.bottom || []).length ||
+                                 (ranking.disliked || []).length);
+    if (explicit) {
+      events.push({
+        order: ranking.order || [],
+        bottom: ranking.bottom || [],
+        disliked: ranking.disliked || [],
+        pool: pool,
+        weight: 1
+      });
     } else if (job.dismissed) {
-      events.push({ order: [], disliked: job.tags || [], pool: job.tags || [], weight: DISMISS_WEIGHT });
+      events.push({ order: [], bottom: [], disliked: pool, pool: pool, weight: DISMISS_WEIGHT });
     }
   });
   return events;
 }
 
-// Every constraint the event implies, as [winner, loser, weight]. Clicked tags
-// beat later-clicked ones, everything clicked beats everything unclicked, and
-// anything explicitly disliked loses to both.
+// The anchor. Bradley-Terry only ever compares two tags, so an event that
+// names no winner produces no constraint at all -- which is exactly what "not
+// for me" was: it disliked every tag on the posting, leaving nothing for them
+// to lose to, so the model saw zero comparisons and the click did nothing but
+// hide the card. The anchor is a synthetic tag pinned at utility 0 that every
+// explicit negative loses to, which is what "below neutral" has to mean when
+// there is no other reference point. It is never scored or displayed.
+//
+// The leading `!` keeps it out of the tag namespace: every real tag comes from
+// TAG_ONTOLOGY or a structured field, and none of those start with punctuation.
+const BASELINE = '!baseline';
+
+// Every constraint the event implies, as [winner, loser, weight]. Three tiers,
+// best to worst: left-clicked tags in click order, then everything untouched,
+// then right-clicked tags -- which are ranked from the BOTTOM, so bottom[0] is
+// the worst thing on the posting. Explicit dislikes sit below all of it.
 function eventPairs(event) {
   const pairs = [];
   const order = event.order || [];
+  const bottom = event.bottom || [];
   const disliked = event.disliked || [];
-  const clicked = new Set(order);
-  const down = new Set(disliked);
-  const rest = (event.pool || []).filter(tag => !clicked.has(tag) && !down.has(tag));
+  // Reversed, so `tail` reads best-to-worst like `order` does and the two
+  // blocks can be paired up the same way.
+  const tail = bottom.slice().reverse();
+  const claimed = new Set(order.concat(bottom, disliked));
+  const rest = (event.pool || []).filter(tag => !claimed.has(tag));
+  const weight = event.weight;
   for (let i = 0; i < order.length; i++) {
-    for (let j = i + 1; j < order.length; j++) pairs.push([order[i], order[j], event.weight]);
-    rest.forEach(tag => pairs.push([order[i], tag, event.weight * 0.7]));
-    disliked.forEach(tag => pairs.push([order[i], tag, event.weight]));
+    for (let j = i + 1; j < order.length; j++) pairs.push([order[i], order[j], weight]);
+    rest.forEach(tag => pairs.push([order[i], tag, weight * 0.7]));
+    tail.forEach(tag => pairs.push([order[i], tag, weight]));
+    disliked.forEach(tag => pairs.push([order[i], tag, weight]));
+  }
+  for (let i = 0; i < tail.length; i++) {
+    for (let j = i + 1; j < tail.length; j++) pairs.push([tail[i], tail[j], weight]);
+    rest.forEach(tag => pairs.push([tag, tail[i], weight * 0.7]));
+    disliked.forEach(tag => pairs.push([tail[i], tag, weight]));
   }
   rest.forEach(tag => disliked.forEach(bad => pairs.push([tag, bad, event.weight * 0.5])));
+  disliked.forEach(tag => pairs.push([BASELINE, tag, weight]));
   return pairs;
 }
 
@@ -1127,14 +1167,18 @@ function trainTagUtilities() {
       // so a pair the model already gets right barely moves anything.
       const probability = 1 / (1 + Math.exp(-(utility[a] - utility[b])));
       const step = rate * weight * (1 - probability);
-      utility[a] += step;
-      utility[b] -= step;
+      // The anchor never moves: it is the fixed zero the negatives are pushed
+      // below. Letting it drift would make it just another tag, and the
+      // residual would fall to nothing after a few passes.
+      if (a !== BASELINE) utility[a] += step;
+      if (b !== BASELINE) utility[b] -= step;
     });
     // Shrink toward zero so a tag seen in one lopsided comparison cannot run
     // away to an extreme the evidence does not support.
     Object.keys(utility).forEach(tag => { utility[tag] *= (1 - RANK_REGULARIZATION); });
     rate *= RANK_DECAY;
   }
+  delete utility[BASELINE];
   return { utility: utility, pairs: pairs.length, events: events.length, tags: Object.keys(utility).length };
 }
 
@@ -1154,10 +1198,14 @@ function tagUtility(tag) {
 }
 
 // Rankable tags: inside the frequency band, so a click always moves a
-// meaningful number of postings and never merely restates the obvious.
+// meaningful number of postings and never merely restates the obvious -- except
+// for the structured facets, which are always offered. See STRUCTURAL_TAGS.
 function tagIsRankable(tag) {
   const freq = tagFrequency();
-  const share = (freq.counts.get(tag) || 0) / freq.total;
+  const count = freq.counts.get(tag) || 0;
+  if (!count) return false;
+  if (STRUCTURAL_TAGS.has(tag)) return true;
+  const share = count / freq.total;
   return share >= TAG_BAND_MIN && share <= TAG_BAND_MAX;
 }
 
@@ -1230,7 +1278,7 @@ function predictFit(job) {
 
 function tasteStatus() {
   const model = tagModel();
-  const ranked = Object.values(state.jobs).filter(job => job.ranking && (job.ranking.order || []).length).length;
+  const ranked = Object.values(state.jobs).filter(hasRanking).length;
   return {
     ranked: ranked,
     events: model.events,
@@ -1547,6 +1595,7 @@ function tagCategory(tag) {
   if (/^(US|UK|Europe|Nordics|ANZ|India|APAC|Canada|LatAm|MEA)$/.test(tag)) return 'location';
   if (/PPP$/.test(tag)) return 'pay';
   if (/years$/.test(tag)) return 'experience';
+  if (FAMILY_NAMES.indexOf(tag) !== -1 || tag === 'Other') return 'family';
   return 'seniority';
 }
 
@@ -1565,7 +1614,8 @@ function tagPosting(row) {
   // for a click against Kubernetes and Greenfield instead of sitting in their
   // own permanent slots. That is the whole point of the change: you rank what
   // matters on THIS posting, not the same five dimensions forever.
-  const derived = [locationClass, seniority];
+  const family = familyRule ? familyRule[0] : 'Other';
+  const derived = [locationClass, seniority, family];
   if (region) derived.push(region);
   if (salary && salary.band) derived.push(salary.band);
   const years = experienceTag(body);
@@ -1582,7 +1632,7 @@ function tagPosting(row) {
     locationClass: locationClass,
     region: region,
     postedAt: row.postedAt || '',
-    family: familyRule ? familyRule[0] : 'Other',
+    family: family,
     seniority: seniority,
     salary: salary,
     tags: tags,
@@ -1597,8 +1647,10 @@ function tagPosting(row) {
 }
 
 function hasRanking(job) {
-  return !!(job.ranking && (job.ranking.order || []).length) ||
-         !!(job.ranking && (job.ranking.disliked || []).length);
+  const ranking = job.ranking;
+  if (!ranking) return false;
+  return !!((ranking.order || []).length || (ranking.bottom || []).length ||
+            (ranking.disliked || []).length);
 }
 
 function rankedJobs() {
@@ -1608,26 +1660,35 @@ function rankedJobs() {
 /* --------------------------------------------------------------- rendering */
 
 // Rank order is shown as a number on the chip, so the click that produced it is
-// visible and correctable. A second click on a ranked chip removes it from the
-// order; the down-arrow marks it disliked.
+// visible and correctable. A left-ranked chip carries its position counted from
+// the top; a right-ranked one carries a downward position counted from the
+// bottom. The two are drawn as separate number lines rather than merged into
+// one, because the middle of the card is deliberately left unranked.
 function tagChipsHtml(job) {
-  const ranking = job.ranking || { order: [], disliked: [] };
+  const ranking = job.ranking || { order: [], bottom: [], disliked: [] };
   const order = ranking.order || [];
+  const bottom = ranking.bottom || [];
   const disliked = ranking.disliked || [];
   const rankable = (job.tags || []).filter(tagIsRankable);
   if (!rankable.length) return '<div class="tagline muted">No rankable tags on this posting.</div>';
   const model = tagModel();
   const chips = rankable.map(tag => {
     const rank = order.indexOf(tag);
+    const low = bottom.indexOf(tag);
     const bad = disliked.indexOf(tag) !== -1;
     const utility = tagUtility(tag);
     const lean = utility > 0.05 ? ' lean-up' : utility < -0.05 ? ' lean-down' : '';
-    const cls = rank !== -1 ? 'chip ranked' : bad ? 'chip disliked' : 'chip' + lean;
+    const cls = rank !== -1 ? 'chip ranked' : low !== -1 ? 'chip bottom'
+      : bad ? 'chip disliked' : 'chip' + lean;
     const title = tag + ' — on ' + tagCoverage(tag).toLocaleString() + ' postings' +
-      (model.pairs ? ', learned score ' + utility.toFixed(2) : '');
+      (model.pairs ? ', learned score ' + utility.toFixed(2) : '') +
+      (low !== -1 ? '  ·  ranked ' + (low + 1) + ' from the bottom; right-click again to unset'
+        : rank !== -1 ? '  ·  right-click to rank it from the bottom instead'
+        : '  ·  left-click ranks from the top, right-click from the bottom');
     return '<button class="' + cls + '" data-tag="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
       'title="' + esc(title) + '">' +
-      (rank !== -1 ? '<b>' + (rank + 1) + '</b> ' : '') + esc(tag) +
+      (rank !== -1 ? '<b>' + (rank + 1) + '</b> '
+        : low !== -1 ? '<b class="low">↓' + (low + 1) + '</b> ' : '') + esc(tag) +
       '<span class="chipNo" data-dislike="' + esc(tag) + '" data-job="' + esc(job.id) + '" ' +
       'title="Mark as something you do not want">' + (bad ? '✕' : '·') + '</span></button>';
   }).join('');
@@ -1640,8 +1701,9 @@ function cardHtml(job, fit, alsoIn) {
   const why = !fit.usable
     ? 'rank a few tags to start'
     : fit.knownTags + ' of ' + (job.tags || []).filter(tagIsRankable).length + ' tags learned';
-  const ranking = job.ranking || { order: [], disliked: [] };
-  const done = (ranking.order || []).length + (ranking.disliked || []).length;
+  const ranking = job.ranking || { order: [], bottom: [], disliked: [] };
+  const done = (ranking.order || []).length + (ranking.bottom || []).length +
+               (ranking.disliked || []).length;
   return '<article class="card" data-card="' + esc(job.id) + '">' +
     '<h3><a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.title) + '</a></h3>' +
     '<div class="meta"><strong>' + esc(job.company) + '</strong>' +
@@ -1655,7 +1717,8 @@ function cardHtml(job, fit, alsoIn) {
       '<br>' + esc(why) + '</span></div>' +
     tagChipsHtml(job) +
     '<div class="cardFoot">' +
-      '<span class="muted">' + (done ? done + ' ranked' : 'click tags in the order you want them') + '</span>' +
+      '<span class="muted">' + (done ? done + ' ranked'
+        : 'left-click tags best-first, right-click worst-first') + '</span>' +
       (job.dismissed
         ? '<button data-restore="' + esc(job.id) + '">undo</button>'
         : (done ? '<button data-clear="' + esc(job.id) + '">clear</button>' : '') +
@@ -1769,10 +1832,11 @@ function viewForYou() {
   if (!status.usable) {
     const byDate = pinnedList(collapseDuplicates(scored)
       .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
-    return '<p class="notice">Nothing ranked yet, so this is newest first. On any card, click the ' +
-      'tags in the order you want them — first click is what appeals most. Three clicks on one posting ' +
-      'already teaches the model a dozen comparisons, and every one applies to the whole pool, not ' +
-      'just that job.</p>' + renderGrid(byDate.slice(0, 120), '');
+    return '<p class="notice">Nothing ranked yet, so this is newest first. On any card, left-click the ' +
+      'tags in the order you want them — first click is what appeals most — and right-click to rank ' +
+      'from the other end, first right-click being the worst thing on the posting. Three clicks on one ' +
+      'posting already teaches the model a dozen comparisons, and every one applies to the whole pool, ' +
+      'not just that job.</p>' + renderGrid(byDate.slice(0, 120), '');
   }
   const ranked = pinnedList(collapseDuplicates(scored)
     .sort((a, b) => b.fit.score - a.fit.score ||
@@ -1863,23 +1927,37 @@ function viewTagBrain() {
 /* ------------------------------------------------------------------ ranking */
 
 function ensureRanking(job) {
-  if (!job.ranking) job.ranking = { order: [], disliked: [] };
+  if (!job.ranking) job.ranking = { order: [], bottom: [], disliked: [] };
   if (!job.ranking.order) job.ranking.order = [];
+  if (!job.ranking.bottom) job.ranking.bottom = [];
   if (!job.ranking.disliked) job.ranking.disliked = [];
   return job.ranking;
 }
 
-// Clicking an unranked tag appends it to the order; clicking a ranked one
-// removes it and everything keeps its relative order. A tag cannot be ranked
-// and disliked at once.
-async function rankTag(jobId, tag) {
+// Two orders per posting, filled from opposite ends.
+//
+// Left-click appends to `order`, so the first left-click is the best thing on
+// the card. Right-click appends to `bottom`, so the first right-click is the
+// WORST thing on the card and the second is the next-worst -- the mirror of the
+// left-hand gesture, not a different kind of opinion. Naming the two tags you
+// would refuse is often much easier than ordering the eight you would accept,
+// and it yields the same pairwise constraints either way.
+//
+// Clicking a chip with the button that ranked it removes it. Clicking with the
+// other button moves it across, because holding a tag in both orders at once
+// would assert that it beats itself.
+async function rankTag(jobId, tag, fromBottom) {
   const job = state.jobs[jobId];
   if (!job) return;
   const ranking = ensureRanking(job);
-  const at = ranking.order.indexOf(tag);
-  if (at !== -1) ranking.order.splice(at, 1);
+  const lane = fromBottom ? ranking.bottom : ranking.order;
+  const other = fromBottom ? ranking.order : ranking.bottom;
+  const at = lane.indexOf(tag);
+  if (at !== -1) lane.splice(at, 1);
   else {
-    ranking.order.push(tag);
+    lane.push(tag);
+    const across = other.indexOf(tag);
+    if (across !== -1) other.splice(across, 1);
     const bad = ranking.disliked.indexOf(tag);
     if (bad !== -1) ranking.disliked.splice(bad, 1);
   }
@@ -1902,6 +1980,8 @@ async function dislikeTag(jobId, tag) {
     ranking.disliked.push(tag);
     const ranked = ranking.order.indexOf(tag);
     if (ranked !== -1) ranking.order.splice(ranked, 1);
+    const low = ranking.bottom.indexOf(tag);
+    if (low !== -1) ranking.bottom.splice(low, 1);
   }
   job.ratedAt = new Date().toISOString();
   invalidateTaste();
@@ -1913,7 +1993,7 @@ async function dislikeTag(jobId, tag) {
 async function clearRanking(id) {
   const job = state.jobs[id];
   if (!job) return;
-  job.ranking = { order: [], disliked: [] };
+  job.ranking = { order: [], bottom: [], disliked: [] };
   job.ratedAt = '';
   job.dismissed = false;
   job.hidden = false;
@@ -1943,7 +2023,7 @@ async function restoreJob(id) {
   if (!job) return;
   job.dismissed = false;
   job.hidden = false;
-  job.ranking = { order: [], disliked: [] };
+  job.ranking = { order: [], bottom: [], disliked: [] };
   job.ratedAt = '';
   invalidateTaste();
   render();
@@ -1971,6 +2051,28 @@ let deckSignature = '';
 // apart from Staff+/Leadership sitting early for match precedence, so the
 // display order is written out separately.
 const SENIORITY_ORDER = ['Intern', 'New grad', 'Junior', 'Mid', 'Senior', 'Staff+', 'Leadership'];
+
+// The structured facets -- role family, level, location mode, region, pay band,
+// experience floor -- are exempt from the frequency band.
+//
+// They were being emitted as tags and then silently dropped again: `Mid` sits on
+// 48% of postings and `On-site` on 86%, so the 30% ceiling threw both away, and
+// with them every level and location chip on the card. The ceiling is the right
+// rule for a skill tag (a tag on everything cannot separate two postings) but
+// the wrong one here, because these are the dimensions a person actually opens a
+// job board to filter on. Ranking `Remote` above `₹60L-1Cr PPP` is a statement
+// worth making even when four postings in five are on-site.
+//
+// `Unspecified` and `Other` stay excluded: they are the absence of a fact, not a
+// fact, so there is nothing to hold a preference about.
+const FAMILY_NAMES = FAMILY_RULES.map(rule => rule[0]);
+const PAY_BANDS = ['under ₹25L PPP', '₹25–40L PPP', '₹40–60L PPP',
+  '₹60L–1Cr PPP', '₹1–1.5Cr PPP', '₹1.5Cr+ PPP'];
+const EXPERIENCE_BANDS = ['0-1 years', '2-3 years', '4-5 years', '6-8 years', '9+ years'];
+const LOCATION_MODES = ['Remote', 'Hybrid', 'On-site'];
+const STRUCTURAL_TAGS = new Set(
+  FAMILY_NAMES.concat(SENIORITY_ORDER, PAY_BANDS, EXPERIENCE_BANDS, LOCATION_MODES,
+    REGION_PATTERNS.map(entry => entry[0])));
 
 function renderDeck(force) {
   const jobs = Object.values(state.jobs);
@@ -2043,7 +2145,7 @@ document.addEventListener('click', async event => {
     event.stopPropagation();
     await dislikeTag(target.dataset.job, target.dataset.dislike);
   } else if (target.dataset.tag) {
-    await rankTag(target.dataset.job, target.dataset.tag);
+    await rankTag(target.dataset.job, target.dataset.tag, false);
   } else if (target.dataset.clear) {
     await clearRanking(target.dataset.clear);
   } else if (target.dataset.hide) {
@@ -2051,6 +2153,17 @@ document.addEventListener('click', async event => {
   } else if (target.dataset.restore) {
     await restoreJob(target.dataset.restore);
   }
+});
+
+// Right-click ranks from the bottom. The browser menu is suppressed only over
+// a chip, so a right-click anywhere else on the page still behaves normally --
+// including on the posting's title link, where the menu is how you open a job
+// in a new tab.
+document.addEventListener('contextmenu', async event => {
+  const chip = event.target.closest('[data-tag]');
+  if (!chip) return;
+  event.preventDefault();
+  await rankTag(chip.dataset.job, chip.dataset.tag, true);
 });
 
 function bindFilter(sel, key, cast) {

@@ -97,3 +97,73 @@ staged. The co-author trailer check is removed: this project keeps the trailer.
 
 `RENDER_CEILING` caps any grid at 200 cards. A stale pinned order once returned
 the whole candidate set to the Rate view and produced a 6.9MB grid.
+
+## 3. Bidirectional ranking, and three fixes to v2
+
+### 3.1 "Not for me" produced no comparisons
+
+`eventPairs` builds constraints as (winner, loser) pairs. A dismissal was
+recorded as `disliked: <every tag on the posting>`, which left `rest` empty, so
+the loop had nothing for the disliked tags to lose to and the event yielded
+**zero** pairs. The click hid the card and taught the model nothing.
+
+Same hole, second symptom: a posting where the only interaction was the `·`
+marker had an empty `order`, so `rankingEvents` skipped it entirely (its
+`else if (job.dismissed)` branch does not fire for a card that was never
+dismissed) while `hasRanking` still counted it as rated. The posting left the
+For You pool and contributed nothing.
+
+Fixed with an anchor: `BASELINE`, a synthetic tag held at utility 0 that every
+explicit negative loses to. It is excluded from the returned utilities and from
+the tag count, and never rendered. This is the one place the model admits an
+absolute reference, and it has to: "below neutral" is the only available reading
+of a dislike when there is nothing else on the posting to compare it against.
+`DISMISS_WEIGHT` 0.25 still applies, so a dismissal is a quarter of a ranking.
+
+Events are now built from `tags.filter(tagIsRankable)` rather than raw tags. A
+tag outside the band was never drawn on the card, so a dismissal cannot honestly
+be read as an opinion about it.
+
+### 3.2 The structured facets were emitted and then dropped
+
+v2 emitted level, location mode, region, pay band and experience floor as tags,
+and 2.2 excluded anything above `TAG_BAND_MAX` (30%) -- which is every one of
+them that matters. `Mid` sits on 48% of postings and `On-site` on 86%, so the
+level and location chips were computed on every posting and then filtered off
+the card. Role family was worse: computed into `job.family`, never added to
+`tags` at all, so it could not be ranked under any setting.
+
+`STRUCTURAL_TAGS` (role families, `SENIORITY_ORDER`, `PAY_BANDS`,
+`EXPERIENCE_BANDS`, location modes, regions) is exempt from the band. The
+ceiling is the right rule for a skill tag -- a tag on everything cannot separate
+two postings -- and the wrong one for the dimensions a person opens a job board
+to filter on. `Unspecified` and `Other` stay out: they are the absence of a
+fact, so there is nothing to hold a preference about.
+
+### 3.3 Ranking from the bottom
+
+Left-click appends to `ranking.order`, best first, as before. Right-click
+appends to `ranking.bottom`, **worst first** -- the mirror gesture, not a
+different kind of opinion. Naming the two tags you would refuse is usually
+easier than ordering the eight you would accept, and both produce the same kind
+of pairwise constraint.
+
+Three tiers, best to worst: `order` in click order, then everything untouched,
+then `bottom` reversed, then explicit dislikes. Weights follow 2.4 -- explicit
+against explicit 1, anything involving the untouched middle 0.7, untouched
+against disliked 0.5.
+
+Clicking a chip with the button that ranked it removes it; clicking with the
+other button moves it across, since a tag in both lanes would assert that it
+beats itself. The `contextmenu` default is suppressed only over a chip, so the
+browser menu still works everywhere else on the card -- notably on the title
+link, which is how a posting gets opened in a new tab.
+
+A ranked chip shows its position from the top; a bottom-ranked one shows
+`↓n` counted from the bottom. Two number lines, not one, because the middle
+of the card is deliberately left unranked.
+
+### 3.4 Migration
+
+`ranking.bottom` is backfilled to `[]` on load and in `ensureRanking`, so v2
+records train unchanged. No stored ranking is reinterpreted.

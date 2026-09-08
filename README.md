@@ -1,10 +1,11 @@
 # JobLens
 
 A job search that learns from ratings instead of keywords. On any posting you
-**click its tags in the order you want them** — `Remote`, `₹60L–1Cr PPP`,
-`Kubernetes`, `Greenfield` — and every click is a comparison that applies to the
-whole corpus, not just that job. You *can* give it your resume once
-for a warmer start; it is optional and the app works fully without it.
+**left-click its tags in the order you want them** — `Remote`, `₹60L–1Cr PPP`,
+`Kubernetes`, `Greenfield` — and **right-click to rank from the other end**, first
+right-click being the worst thing on the card. Every click is a comparison that
+applies to the whole corpus, not just that job. You *can* give it your resume
+once for a warmer start; it is optional and the app works fully without it.
 
 Static: `index.html` + `styles.css` + `app.js` + `registry.json`. No build step,
 no dependencies, no backend, no API keys, no accounts, nothing paid.
@@ -91,11 +92,26 @@ band. Now: **150 tags, 0 untagged postings, 87% rankable**.
 Location, seniority and pay are tags now rather than fixed fields, so they
 compete for a click against Kubernetes and Greenfield.
 
+### Both ends of the card
+
+Left-click ranks from the top, right-click from the bottom. `bottom[0]` is the
+worst tag on the posting, `bottom[1]` the next-worst — the mirror of the
+left-hand gesture, because naming the two things you would refuse is usually
+easier than ordering the eight you would accept. The middle is left unranked on
+purpose, and the two blocks are drawn as separate number lines. Clicking a chip
+with the button that ranked it removes it; the other button moves it across.
+
 ### Only tags worth a click are shown
 
-Between 0.4% and 30% of the library. Below that a click moves a handful of
-postings; above it the tag cannot discriminate — `On-site` (86%) and `Mid` (48%)
-are excluded. Each chip's tooltip shows how many postings it covers.
+Skill tags: between 0.4% and 30% of the library. Below that a click moves a
+handful of postings; above it the tag cannot discriminate. Each chip's tooltip
+shows how many postings it covers.
+
+The **structured facets are exempt** — role family, level, location mode,
+region, pay band, experience floor are always offered however common they are.
+The ceiling is right for a skill tag and wrong for the dimensions you opened a
+job board to filter on: `Mid` sits on 48% of postings and `On-site` on 86%, and
+ranking `Remote` above `₹60L–1Cr PPP` is worth saying anyway.
 
 ### The learner
 
@@ -116,9 +132,15 @@ never said a job was 4 out of 5, only that one tag beats another.
 
 ### "Not for me"
 
-A weak negative across all the posting's tags (0.25 weight), plus hiding. It
-deliberately does not guess *which* tag was at fault — that attribution error is
-exactly what the single-star model got wrong.
+A weak negative across all the posting's rankable tags (0.25 weight), plus
+hiding. It deliberately does not guess *which* tag was at fault — that
+attribution error is exactly what the single-star model got wrong.
+
+Every explicit negative loses to `BASELINE`, a synthetic tag held at utility 0.
+Bradley-Terry only ever compares two tags, so a posting whose every tag is
+disliked has nothing left to lose to and would otherwise yield no comparison at
+all. The anchor is the fixed zero that "below neutral" is measured against, and
+it is never scored or displayed.
 
 ## Tabs
 
