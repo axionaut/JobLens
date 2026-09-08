@@ -59,6 +59,18 @@ OLD=$(git show HEAD:app.js 2>/dev/null | grep -m1 -oE 'APP_VERSION = [0-9]+' | g
 node --check app.js >/dev/null 2>&1 || FAIL="${FAIL}node --check app.js FAILS. "
 git diff --cached --check >/dev/null 2>&1 || FAIL="${FAIL}staged diff has whitespace errors. "
 [ -n "$NEW" ] && ! grep -q "^## ${NEW}\." spec.md 2>/dev/null && FAIL="${FAIL}spec.md has no '## ${NEW}.' section for this release. "
+# v3 shipped invisibly: the browser held the previous app.js, so the badge still
+# read v2 and the release looked like it had never happened. index.html carries
+# ?v=<APP_VERSION> on both assets, and a bump that forgets them is worse than no
+# bump at all, because everything says it worked.
+if [ -n "$NEW" ]; then
+  for ASSET in app.js styles.css; do
+    grep -q "$ASSET?v=${NEW}\"" index.html 2>/dev/null ||
+      FAIL="${FAIL}index.html does not load ${ASSET}?v=${NEW}; bump the cache-buster with APP_VERSION. "
+  done
+  grep -q "id=\"versionBadge\" class=\"badge\">v${NEW}<" index.html 2>/dev/null ||
+    FAIL="${FAIL}the versionBadge fallback in index.html is not v${NEW}. "
+fi
 if git diff --cached -U0 -- app.js index.html styles.css 2>/dev/null | grep -q '^+.*\(Ã\|â€\|ð\)'; then
   FAIL="${FAIL}staged lines contain double-decoded characters. "
 fi

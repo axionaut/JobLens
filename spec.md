@@ -167,3 +167,14 @@ of the card is deliberately left unranked.
 
 `ranking.bottom` is backfilled to `[]` on load and in `ensureRanking`, so v2
 records train unchanged. No stored ranking is reinterpreted.
+
+### 3.5 Cache-busting
+
+v3 shipped and was invisible: the browser held the previous `app.js`, so the
+badge still read v2 and nothing about the page suggested a release had happened.
+`index.html` now loads `app.js?v=N` and `styles.css?v=N`, and its `versionBadge`
+fallback text is `vN`, all three tracking `APP_VERSION`.
+
+The gate checks all three on any commit touching `app.js`. A bump that forgets
+the cache-buster is worse than no bump, because every local check passes and the
+deployed page is unchanged.
