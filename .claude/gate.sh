@@ -8,7 +8,10 @@
 # enforces exactly those and nothing else. It stays silent for every command
 # that is not a commit, and for commits that do not touch app.js.
 set -uo pipefail
-REPO="c:/Users/nitin/Desktop/Apps/JobSearch"
+# Derived from the script's own location, not written out, so renaming or moving
+# the project folder cannot silently disable the gate. A hook that stops firing
+# is worse than one that fails loudly, because nothing announces its absence.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO" 2>/dev/null || exit 0
 [ "${1:-}" = "commit" ] || exit 0
 
