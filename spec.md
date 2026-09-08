@@ -362,3 +362,48 @@ One realistic posting went from ~9 tags to 30.
 
 `founding engineer` was also dropped from `Greenfield/0-to-1`, which
 `Startup founding role` now names precisely -- two tags for one fact is noise.
+
+## 7. Three things the screen was getting wrong
+
+### 7.1 "More like this" deleted the thing you liked
+
+`hasRanking` gated the For You candidate pool, and v6 made it return true for a
+liked posting. So saving a job removed it from the list of jobs like it, which is
+the exact opposite of what the button says. It only became visible after a
+re-sort, because the pin was holding the card in place until then.
+
+A like is a verdict on the JOB; ranking tags is teaching about TAGS, and only
+the latter means "done with this card". `hasRanking` no longer counts a like,
+and `isCandidate` names the For You test in one place. Liked postings sort with
+everything else and keep their green marker.
+
+Rate is the exception: it ranks by unseen tags, so a posting you have already
+judged has nothing left to teach there, and it filters liked ones out.
+
+### 7.2 "7047 cards moved"
+
+`pinnedDrift` compared the whole pinned order against the whole fresh order --
+thousands of entries -- while the grid draws 120. The count was true and
+useless. Both sequences are now sliced to `VISIBLE_SLICE` (120) first, so
+"moved" counts cards the reader can actually see.
+
+### 7.3 A card cannot be better than 100% of the pool
+
+`scorePercentile` rounded `below / total`, which reaches 100 for the top-scoring
+card -- so it read "better than 100% of your pool", i.e. better than itself.
+
+It now floors instead of rounding, and the label reads "scores above N% of your
+pool". `below` is strictly less than `total`, so floor can never reach 100. Ties
+collapse honestly as a side effect: 500 identical postings at the top all report
+the share below the whole tie group instead of each claiming to beat the other
+499.
+
+### 7.4 The notice band is gone
+
+Every view opened with a bordered banner: a whole band above the grid, repainted
+on every click, to carry one sentence -- and it scrolled away exactly when the
+re-sort button inside it became useful.
+
+Views now set `viewHint` and return only their grid. `render()` paints the hint
+and the re-sort offer into `#topbar`, which does not scroll. The re-sort button
+sits at the right end of the stats row.

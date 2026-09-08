@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JobLens</title>
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <a class="skip" href="#main">Skip to postings</a>
@@ -15,7 +15,7 @@
      Two dense rows, and the filter row folds away when you are not using it. -->
 <div id="topbar">
   <div class="barMain">
-    <div class="brand">JobLens <span id="versionBadge" class="badge">v6</span></div>
+    <div class="brand">JobLens <span id="versionBadge" class="badge">v7</span></div>
 
     <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
       <button class="tab" role="tab" data-view="foryou" aria-selected="false">For You</button>
@@ -38,6 +38,11 @@
   <div class="barStats">
     <div class="headline" id="headline" aria-live="polite"></div>
     <div id="activePills" class="pills"></div>
+    <!-- The per-view hint and the re-sort offer live here rather than in a
+         banner above the grid: one line in the bar that never scrolls away,
+         instead of a whole band that did. -->
+    <div id="viewHint" class="viewHint"></div>
+    <div id="resortSlot"></div>
   </div>
 
   <section id="deck" class="deck">
@@ -82,6 +87,6 @@
   </div>
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

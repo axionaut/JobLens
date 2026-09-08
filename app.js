@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -1387,7 +1387,13 @@ function scorePercentile(score) {
     const mid = (lo + hi) >> 1;
     if (scoreDistribution[mid] < score) lo = mid + 1; else hi = mid;
   }
-  return Math.round((lo / scoreDistribution.length) * 100);
+  // floor, not round, and read as "how much of the pool scores strictly lower".
+  // `lo` is the count below this score, so it is always < length and floor can
+  // never reach 100 -- the card was claiming to be "better than 100% of your
+  // pool", i.e. better than itself. Ties collapse honestly too: 500 identical
+  // postings at the top all report the share below the whole tie group rather
+  // than each claiming to beat the other 499.
+  return Math.floor((lo / scoreDistribution.length) * 100);
 }
 
 function predictFit(job) {
@@ -1777,8 +1783,12 @@ function tagPosting(row) {
   };
 }
 
+// Deliberately does NOT count a like. hasRanking gates the For You candidate
+// pool, so counting it meant that saying "more like this" made the posting
+// vanish from the list of things like it -- the exact opposite of what the
+// button says. A save is a verdict on the JOB; ranking tags is teaching about
+// tags, and only the latter means "done with this card".
 function hasRanking(job) {
-  if (job.liked) return true;
   const ranking = job.ranking;
   if (!ranking) return false;
   return !!((ranking.order || []).length || (ranking.bottom || []).length ||
@@ -1787,6 +1797,12 @@ function hasRanking(job) {
 
 function rankedJobs() {
   return Object.values(state.jobs).filter(job => hasRanking(job) || job.dismissed || job.liked);
+}
+
+// A liked posting stays in For You and sorts with everything else -- it earned
+// its place, and it is the answer to "more like this".
+function isCandidate(job) {
+  return !hasRanking(job) && !job.hidden && passesFilters(job);
 }
 
 /* --------------------------------------------------------------- rendering */
@@ -1852,7 +1868,8 @@ function cardHtml(job, fit, alsoIn) {
     salaryHtml(job) +
     '<div class="fit"><span class="fitPct ' + cls + '">' +
       (pct === null ? '—' : pct + '<small>%</small>') + '</span>' +
-      '<span class="fitWhy">' + (pct === null ? 'not ranked yet' : 'better than ' + pct + '% of your pool') +
+      '<span class="fitWhy">' + (pct === null ? 'not ranked yet'
+        : 'scores above ' + pct + '% of your pool') +
       '<br>' + esc(why) + '</span></div>' +
     tagChipsHtml(job) +
     '<div class="cardFoot">' +
@@ -1955,8 +1972,9 @@ function pinnedList(entries) {
     const fresh = entries.map(entry => entry.job.id).filter(id => {
       const job = state.jobs[id];
       return job && !job.hidden;
-    });
-    const held = kept.map(entry => entry.job.id).filter(id => byId.has(id));
+    }).slice(0, VISIBLE_SLICE);
+    const held = kept.map(entry => entry.job.id).filter(id => byId.has(id))
+      .slice(0, VISIBLE_SLICE);
     pinnedDrift = held.reduce((n, id, i) => n + (fresh[i] === id ? 0 : 1), 0);
     return kept;
   }
@@ -1965,20 +1983,29 @@ function pinnedList(entries) {
   return entries;
 }
 
-// Offered rather than applied. The order is deliberately stable while you are
-// ranking, so the re-sort is a thing you ask for -- but it has to be visible,
-// because a list silently sorted two rankings ago looks exactly like a list
-// that disagrees with you.
-function resortHtml() {
-  if (!pinnedDrift) return '';
-  return ' <button class="resort" data-repin="1">re-sort \u2014 ' + pinnedDrift +
-    ' card' + (pinnedDrift === 1 ? '' : 's') + ' moved</button>';
+// Offered rather than applied, and it lives in the sticky bar: it was inside a
+// per-view notice paragraph, which cost a whole band above the grid to say one
+// sentence and scrolled away exactly when you wanted it.
+//
+// Views set `viewHint` instead of emitting their own banner, and render() paints
+// hint and re-sort into the bar together.
+let viewHint = '';
+
+function renderBarNotice() {
+  $('#viewHint').innerHTML = viewHint;
+  $('#resortSlot').innerHTML = pinnedDrift
+    ? '<button class="resort" data-repin="1">re-sort \u2014 ' + pinnedDrift +
+      ' card' + (pinnedDrift === 1 ? '' : 's') + ' moved</button>'
+    : '';
 }
 
 // Hard ceiling on what is ever put in the DOM at once. Each view slices to its
 // own limit already; this is the backstop for the case where a stale pinned
 // order hands back the whole candidate set, which once produced a 6.9MB grid.
 const RENDER_CEILING = 200;
+// What a grid actually draws, and therefore the only span over which "moved"
+// means anything to someone looking at the screen.
+const VISIBLE_SLICE = 120;
 
 function renderGrid(entries, emptyMessage) {
   if (!entries.length) return '<div class="empty">' + esc(emptyMessage) + '</div>';
@@ -2002,7 +2029,7 @@ function resumeToTagWeights(text) {
 }
 
 function viewForYou() {
-  const candidates = Object.values(state.jobs).filter(j => !hasRanking(j) && !j.hidden && passesFilters(j));
+  const candidates = Object.values(state.jobs).filter(isCandidate);
   if (!candidates.length) {
     return '<div class="empty">Nothing matches these filters. Loosen one, or refresh postings.</div>';
   }
@@ -2011,25 +2038,25 @@ function viewForYou() {
   if (!status.usable) {
     const byDate = pinnedList(collapseDuplicates(scored)
       .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
-    return '<p class="notice"><b>Nothing ranked yet — newest first.</b> On any card, ' +
-      '<b>left-click</b> tags best-first; <b>right-click</b> ranks from the worst end. Every click is ' +
-      'a comparison that applies to all ' + Object.keys(state.jobs).length.toLocaleString() +
-      ' postings, not just that one.</p>' + renderGrid(byDate.slice(0, 120), '');
+    viewHint = '<b>Nothing ranked yet — newest first.</b> Left-click tags best-first, ' +
+      'right-click from the worst end.';
+    return renderGrid(byDate.slice(0, VISIBLE_SLICE), '');
   }
   const ranked = pinnedList(collapseDuplicates(scored)
     .sort((a, b) => b.fit.score - a.fit.score ||
                     b.fit.knownTags - a.fit.knownTags ||
                     a.job.title.localeCompare(b.job.title)));
-  return '<p class="notice">Ranked from ' + status.pairs.toLocaleString() + ' comparisons over ' +
-    status.tags + ' tags. <span class="muted">% is position in this pool, not a rating.</span>' +
-    resortHtml() + '</p>' + renderGrid(ranked.slice(0, 120), '');
+  viewHint = 'Ranked from ' + status.pairs.toLocaleString() + ' comparisons over ' +
+    status.tags + ' tags · % is pool position, not a rating';
+  return renderGrid(ranked.slice(0, VISIBLE_SLICE), '');
 }
 
 // The postings that would teach the most: those carrying rankable tags the
 // model has never seen a comparison for. Ranking a posting made entirely of
 // tags it already understands confirms what it knows and adds nothing.
 function viewRate() {
-  const candidates = Object.values(state.jobs).filter(j => !hasRanking(j) && !j.hidden && passesFilters(j));
+  const candidates = Object.values(state.jobs)
+    .filter(j => isCandidate(j) && !j.liked);
   if (!candidates.length) return '<div class="empty">Nothing to rank under these filters.</div>';
   const scored = scoredList(candidates);
   const model = tagModel();
@@ -2048,9 +2075,9 @@ function viewRate() {
     spread.push(entry);
   });
   const pinned = pinnedList(spread.slice(0, 30));
-  return '<p class="notice">These carry the most tags never yet compared, so they teach the most. ' +
-    '<span class="muted">Left-click best-first, right-click worst-first, <b>·</b> marks a tag you ' +
-    'never want.</span>' + resortHtml() + '</p>' + renderGrid(pinned, 'Nothing left to rank here.');
+  viewHint = 'Most unseen tags, so these teach the most · left-click best-first, ' +
+    'right-click worst-first';
+  return renderGrid(pinned, 'Nothing left to rank here.');
 }
 
 function viewRated() {
@@ -2058,20 +2085,19 @@ function viewRated() {
     .sort((a, b) => (b.job.ratedAt || '').localeCompare(a.job.ratedAt || ''));
   const dismissed = entries.filter(e => e.job.dismissed).length;
   const liked = entries.filter(e => e.job.liked).length;
-  return '<p class="notice">Everything you have ranked — change anything here and the model ' +
-    'retrains from scratch.' +
-    (liked ? ' <b>' + liked + ' saved</b> with “more like this” — your shortlist, weak positive at ' +
-      LIKE_WEIGHT + ' across all their tags.' : '') +
-    (dismissed ? ' <span class="muted">' + dismissed +
-      ' dismissed with “not for me” (weak negative at ' + DISMISS_WEIGHT +
-      ').</span>' : '') + '</p>' +
-    renderGrid(entries, 'Nothing ranked yet.');
+  viewHint = (liked ? '<b>' + liked + ' saved</b> — your shortlist · ' : '') +
+    (dismissed ? dismissed + ' dismissed · ' : '') +
+    'change anything and the model retrains from scratch';
+  return renderGrid(entries, 'Nothing ranked yet.');
 }
 
 function viewPool() {
   const entries = scoredList(Object.values(state.jobs).filter(passesFilters))
     .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt));
-  return renderGrid(entries.slice(0, 200), 'Pool is empty — hit Refresh postings.');
+  viewHint = 'Everything that passes the filters, newest first · ' +
+    Math.min(entries.length, RENDER_CEILING).toLocaleString() + ' of ' +
+    entries.length.toLocaleString() + ' drawn';
+  return renderGrid(entries.slice(0, RENDER_CEILING), 'Pool is empty — hit Refresh postings.');
 }
 
 // The audit. Every tag the model has an opinion about, what that opinion is,
@@ -2096,9 +2122,10 @@ function viewTagBrain() {
     '</table>';
   const wanted = rows.filter(row => row[1] > 0.02);
   const unwanted = rows.filter(row => row[1] < -0.02).reverse();
-  return '<p class="muted">' + status.pairs.toLocaleString() + ' comparisons from ' + status.events +
-    ' posting' + (status.events === 1 ? '' : 's') + ', over ' + status.tags + ' tags. A score is ' +
-    'relative: it only means this tag beat or lost to others you ranked.</p>' +
+  viewHint = status.pairs.toLocaleString() + ' comparisons from ' + status.events +
+    ' posting' + (status.events === 1 ? '' : 's') + ' · a score is relative, it only means this ' +
+    'tag beat or lost to others you ranked';
+  return
     (wanted.length ? '<h3>What you want</h3>' + table(wanted.slice(0, 40)) : '') +
     (unwanted.length ? '<h3>What you do not</h3>' + table(unwanted.slice(0, 25)) : '');
 }
@@ -2372,7 +2399,11 @@ function render() {
   renderDeck();
   renderHeadline();
   renderFilterState();
-  $('#main').innerHTML = (VIEWS[state.view] || viewForYou)();
+  // The view computes both its grid and its hint, so the bar is painted after.
+  viewHint = '';
+  const html = (VIEWS[state.view] || viewForYou)();
+  renderBarNotice();
+  $('#main').innerHTML = html;
 }
 
 /* ------------------------------------------------------------------- wiring */
