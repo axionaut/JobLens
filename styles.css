@@ -45,6 +45,12 @@ button.ghost:hover{color:var(--ink);border-color:var(--accent)}
 .pipCount{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;
   margin-left:4px;border-radius:99px;background:var(--accent);color:#08121f;
   font-size:10px;font-weight:700}
+.iconBtn{padding:5px 9px;line-height:1;font-size:13px}
+#topbar.collapsed .iconBtn span[aria-hidden]{display:inline-block;transform:rotate(180deg)}
+/* Collapsed keeps only the row that navigates: brand, tabs, actions. */
+#topbar.collapsed #barStats,#topbar.collapsed #deck{display:none}
+.srOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);
+  white-space:nowrap}
 
 .barStats{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:0 20px 6px}
 .barStats>#resortSlot{margin-left:auto}
@@ -67,12 +73,29 @@ button.ghost:hover{color:var(--ink);border-color:var(--accent)}
 .bar{flex:1;height:5px;background:var(--panel2);border-radius:99px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
 
-/* Under ~720px the tabs are the thing worth keeping on one line. */
-@media (max-width:720px){
-  .barMain{flex-wrap:wrap;gap:9px}
-  .barRight{margin-left:0;width:100%}
-  .tabs{order:3;width:100%}
-  .deck label{flex:1 1 130px}
+/* Phones. The old rules wrapped .barMain into three stacked rows and let the
+   stats line wrap again, so the bar ate half a 700px-tall viewport before the
+   first card. Now: one nav row with the tabs scrolling sideways, one stats line
+   clipped to a single line, and the whole thing collapsible. */
+@media (max-width:760px){
+  .barMain{gap:8px;padding:6px 12px}
+  .brand{font-size:15px}
+  .brand .badge{display:none}
+  /* Sideways scroll instead of wrapping: five tabs stay one row at any width. */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;padding:5px 9px;font-size:12.5px}
+  .barRight{gap:5px}
+  .barRight #btnResume{display:none}
+  #btnRefresh,#btnFilters{padding:5px 9px;font-size:12px}
+  .barStats{padding:0 12px 5px;flex-wrap:nowrap;overflow:hidden}
+  .headline,.viewHint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .viewHint{display:none}
+  .deck{padding:0 12px 8px;gap:8px}
+  .deck label{flex:1 1 calc(50% - 4px)}
+  .deck input,.deck select{width:100%}
+  #main{padding:12px 12px 60px}
+  .grid{grid-template-columns:1fr;gap:10px}
 }
 
 #main{padding:18px 20px 60px}

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JobLens</title>
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 <a class="skip" href="#main">Skip to postings</a>
@@ -15,7 +15,7 @@
      Two dense rows, and the filter row folds away when you are not using it. -->
 <div id="topbar">
   <div class="barMain">
-    <div class="brand">JobLens <span id="versionBadge" class="badge">v8</span></div>
+    <div class="brand">JobLens <span id="versionBadge" class="badge">v10</span></div>
 
     <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
       <button class="tab" role="tab" data-view="foryou" aria-selected="false">For You</button>
@@ -32,10 +32,16 @@
       <button id="btnRefresh" class="primary">Refresh</button>
       <button id="btnStop" hidden>Stop</button>
       <button id="btnResume" class="ghost">Resume</button>
+      <!-- Collapses everything but this row. On a phone the stats line and the
+           filter row were taking half the viewport before a single card. -->
+      <button id="btnCollapse" class="ghost iconBtn" aria-expanded="true"
+              aria-controls="barStats deck" title="Collapse the bar">
+        <span aria-hidden="true">⌃</span><span class="srOnly">Collapse the bar</span>
+      </button>
     </div>
   </div>
 
-  <div class="barStats">
+  <div class="barStats" id="barStats">
     <div class="headline" id="headline" aria-live="polite"></div>
     <div id="activePills" class="pills"></div>
     <!-- The per-view hint and the re-sort offer live here rather than in a
@@ -87,6 +93,6 @@
   </div>
 </div>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

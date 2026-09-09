@@ -493,3 +493,91 @@ refetch of 16,233 postings.
 `viewTagBrain` had `return` alone on its line with the expression below it, left
 behind when 7.4 lifted the notice out into `viewHint`. Automatic semicolon
 insertion made it `return;`, so Tag Brain rendered empty in v7 and nothing threw.
+
+## 10. Reach: 142 sources -> 281
+
+### 10.1 What "142 companies" actually meant
+
+138 hand-written single-employer boards plus 4 aggregator feeds, and the
+progress line called all 142 "companies" -- wrong twice over, since the
+aggregators carry hundreds of employers each. It now says "sources".
+
+Nothing discovered new companies. `registry.json` was maintained by hand.
+
+### 10.2 The hard ceiling
+
+JobLens has no backend, so the browser fetches each ATS endpoint directly and
+only endpoints that send `Access-Control-Allow-Origin` exist as far as the app
+is concerned. Probed and rejected: Indeed, LinkedIn, Naukri, Instahyre,
+Wellfound, Y Combinator, Seek, JobStreet, Adzuna, USAJobs, Arbeitsagentur,
+Workday, Himalayas, Teamtailor. All need a server-side key or scraping.
+
+"Billions of postings worldwide" is not reachable from a static page. What is
+reachable is every CORS-open ATS board plus the few open aggregator feeds.
+
+### 10.3 New adapters
+
+- **Workable** (`apply.workable.com/api/v1/widget/accounts/{slug}`) -- CORS `*`.
+  Rate-limits hard under a sweep; only 2 boards survived discovery.
+- **Recruitee** (`{slug}.recruitee.com/api/offers/`) -- reflects the origin.
+  Common in the Netherlands and Germany where Greenhouse is rare, and carries
+  structured pay, so those postings get a real salary band.
+- **WeWorkRemotely** -- the first XML source. No JSON API, one RSS feed per
+  category, 8 feeds. `fetchXml` uses `DOMParser` (no library) and checks for
+  `<parsererror>`, because a malformed feed yields an error *document* rather
+  than throwing and would otherwise look like an empty board.
+
+  WWR item titles are `"Company: Role"`, and that is the only place the employer
+  appears. The adapter splits on the first colon and `tagPosting` already
+  preferred `row.company` over `row.entry.company`, so per-item employers flow
+  through and the feed name is only a fallback.
+
+Rejected after probing: **Personio** serves its own marketing page at the
+documented XML path.
+
+### 10.4 Discovery
+
+`tools/` (offline, never shipped) turns ~455 candidate company names into
+verified entries. A board is recorded only if it answers 200, sends CORS,
+parses, AND has at least one posting.
+
+Two bugs in the tooling that both produced confident false negatives:
+
+- **A 400KB read cap** truncated every large board mid-JSON, so the parse failed
+  and the board was recorded as absent -- silently discarding exactly the
+  employers with the most postings. Ramp's Ashby board is 2.4MB. The first sweep
+  "found" 171 boards; with the cap removed the same sweep found 230.
+- **16 concurrent workers** made Greenhouse and Ashby throttle, so real boards
+  looked absent. Ramp, Databricks, Anthropic and OpenAI all answered 200 when
+  asked individually. 8 workers is the tested ceiling.
+
+Result: 281 entries. 122 Greenhouse, 104 Ashby, 24 Lever, 15 SmartRecruiters,
+8 WWR feeds, 4 Recruitee, 4 aggregators. 22,468 postings visible on the newly
+added boards alone.
+
+### 10.5 India
+
+32 entries, and it is the weakest region by a distance. Most Indian employers
+run Darwinbox, Keka, Zoho Recruit or their own careers pages -- none reachable
+from a browser. The ones that surface (Paytm 210 postings, Sarvam 63, Postman
+62, Meesho 50, Porter, Turing, Mindtickle, CRED, Navi, Atlan, Groww) do so
+because they happen to run Greenhouse, Lever or Ashby. India coverage otherwise
+comes from the remote-global feeds.
+
+## 11. The bar on a phone
+
+`#topbar` was sticky but not collapsible, and the mobile rules wrapped
+`.barMain` into three stacked rows and let the stats line wrap again: ~270px of
+a 844px viewport before the first card.
+
+- `#btnCollapse` toggles `#topbar.collapsed`, which hides the stats row and the
+  filter row and keeps the navigation row. 62px, 7% of the viewport.
+- A phone **starts** collapsed, once, and only if the user has never chosen
+  either way -- `state.settings.barCollapsed` is remembered after that.
+- The tabs scroll sideways (`flex-wrap:nowrap; overflow-x:auto`) instead of
+  wrapping, so five tabs stay one row at any width.
+- Under 760px: one card per row, the version badge and Resume are hidden, the
+  headline and hint are clipped to one line, and filter controls go two-up.
+
+Separate from the filter fold (5.2) on purpose: they answer different questions
+-- "I am not filtering right now" and "I need the screen".

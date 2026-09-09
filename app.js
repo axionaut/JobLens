@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 8;
+const APP_VERSION = 10;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -349,6 +349,76 @@ const ATS = {
     }))
   },
 
+  // Workable and Recruitee were added because both send
+  // Access-Control-Allow-Origin and both are common outside the US -- Recruitee
+  // especially in the Netherlands and Germany, where Greenhouse is rare.
+  workable: {
+    url: slug => `https://apply.workable.com/api/v1/widget/accounts/${slug}?details=true`,
+    rows: json => (json.jobs || []).map(j => ({
+      key: String(j.shortcode || j.id),
+      title: j.title,
+      url: j.url || j.application_url || '',
+      location: [j.city, j.state, j.country].filter(Boolean).join(', ') ||
+                (j.location && j.location.location_str) || '',
+      postedAt: j.published_on || j.created_at || '',
+      body: htmlToText(j.description || '') + ' ' + htmlToText(j.requirements || '') + ' ' +
+            htmlToText(j.benefits || ''),
+      remote: !!j.telecommuting,
+      department: j.department || j.function || ''
+    }))
+  },
+
+  recruitee: {
+    url: slug => `https://${slug}.recruitee.com/api/offers/`,
+    rows: json => (json.offers || []).map(j => ({
+      key: String(j.id),
+      title: j.title,
+      url: j.careers_url || j.careers_apply_url || '',
+      location: [j.city, j.state_name, j.country].filter(Boolean).join(', ') ||
+                j.location || '',
+      postedAt: j.published_at || j.created_at || '',
+      body: htmlToText(j.description || '') + ' ' + htmlToText(j.requirements || ''),
+      // `remote`/`hybrid`/`on_site` are separate booleans rather than one field.
+      remote: !!j.remote,
+      department: j.department || '',
+      salaryHint: j.salary && j.salary.min > 0 ? {
+        min: Number(j.salary.min) || 0,
+        max: Number(j.salary.max) || Number(j.salary.min) || 0,
+        currency: j.salary.currency || 'EUR',
+        interval: (j.salary.period || 'year').toLowerCase()
+      } : null
+    }))
+  },
+
+  // The one XML source. WeWorkRemotely publishes a feed per category and no
+  // JSON API, and its titles carry the employer -- "Zeta Global: Senior Product
+  // Designer" -- which is the only place the company name appears at all.
+  wwr: {
+    xml: true,
+    url: slug => `https://weworkremotely.com/categories/${slug}.rss`,
+    rows: doc => Array.from(doc.querySelectorAll('item')).map(item => {
+      const text = tag => {
+        const node = item.querySelector(tag);
+        return node ? (node.textContent || '').trim() : '';
+      };
+      const whole = text('title');
+      const split = whole.indexOf(':');
+      const company = split > 0 ? whole.slice(0, split).trim() : '';
+      const title = split > 0 ? whole.slice(split + 1).trim() : whole;
+      const link = text('link') || text('guid');
+      return {
+        key: link || whole,
+        title: title,
+        url: link,
+        company: company,
+        location: text('region'),
+        postedAt: text('pubDate') ? new Date(text('pubDate')).toISOString() : '',
+        body: htmlToText(text('description')),
+        department: text('category')
+      };
+    })
+  },
+
   lever: {
     url: slug => `https://api.lever.co/v0/postings/${slug}?mode=json`,
     rows: json => (Array.isArray(json) ? json : []).map(j => ({
@@ -430,6 +500,18 @@ async function fetchJson(url, label) {
   return res.json();
 }
 
+// RSS needs no library: DOMParser is in every browser this app already assumes.
+// A malformed feed yields a <parsererror> document rather than throwing, so it
+// is checked explicitly -- otherwise a broken feed would silently contribute
+// zero rows and look like an empty board.
+async function fetchXml(url, label) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(25000) });
+  if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
+  const doc = new DOMParser().parseFromString(await res.text(), 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error(`${label}: malformed XML`);
+  return doc;
+}
+
 async function fetchCompany(entry) {
   const spec = ATS[entry.ats];
   if (!spec) return [];
@@ -443,6 +525,8 @@ async function fetchCompany(entry) {
       if (!batch.length) break;
       rows = rows.concat(batch);
     }
+  } else if (spec.xml) {
+    rows = spec.rows(await fetchXml(spec.url(entry.slug), entry.company));
   } else {
     rows = spec.rows(await fetchJson(spec.url(entry.slug), entry.company));
   }
@@ -1813,7 +1897,7 @@ async function refreshPostings() {
         failures.push(entry.company + ': ' + err.message);
       }
       done++;
-      setProgress(done, total, done + ' / ' + total + ' companies  ·  ' + added + ' new');
+      setProgress(done, total, done + ' / ' + total + ' sources  ·  ' + added + ' new');
     }
   }
 
@@ -2686,6 +2770,31 @@ function bindTabs() {
   });
 }
 
+// Collapsing the bar to its navigation row. Separate from the filter fold,
+// because they answer different questions: "I am not filtering right now" and
+// "I need the screen". On a phone the stats line plus the filter row was half
+// the viewport before the first card, so a phone starts collapsed -- once, and
+// only if the user has never chosen either way.
+function bindCollapse() {
+  const bar = $('#topbar');
+  const toggle = $('#btnCollapse');
+  const narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches;
+  const stored = state.settings.barCollapsed;
+  let collapsed = stored === undefined ? narrow : !!stored;
+  const paint = () => {
+    bar.classList.toggle('collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    toggle.title = collapsed ? 'Expand the bar' : 'Collapse the bar';
+  };
+  paint();
+  toggle.addEventListener('click', async () => {
+    collapsed = !collapsed;
+    state.settings.barCollapsed = collapsed;
+    paint();
+    await saveMeta();
+  });
+}
+
 function bindFilterBar() {
   const deck = $('#deck');
   const toggle = $('#btnFilters');
@@ -2783,6 +2892,7 @@ async function init() {
     render();
   });
   bindTabs();
+  bindCollapse();
   bindFilterBar();
   bindResume();
   $('#btnRefresh').addEventListener('click', refreshPostings);
@@ -2791,7 +2901,7 @@ async function init() {
   render();
   if (!Object.keys(state.jobs).length) {
     $('#headline').textContent = 'Empty library — hit Refresh postings to pull from ' +
-      registry.length + ' companies.';
+      registry.length + ' sources.';
   }
 }
 

@@ -10,6 +10,24 @@ once for a warmer start; it is optional and the app works fully without it.
 Static: `index.html` + `styles.css` + `app.js` + `registry.json`. No build step,
 no dependencies, no backend, no API keys, no accounts, nothing paid.
 
+## Where the postings come from
+
+**281 sources**: 269 individual employer ATS boards (Greenhouse, Ashby, Lever,
+SmartRecruiters, Recruitee, Workable) plus 12 multi-employer feeds (Arbeitnow,
+Jobicy, RemoteOK, Remotive, and 8 WeWorkRemotely category feeds). Covers India,
+remote-global, US, Europe, ANZ and Canada.
+
+There is no job-search API behind this. Your browser fetches each employer's
+public endpoint directly, so **only CORS-open endpoints exist** as far as the app
+is concerned. Indeed, LinkedIn, Naukri, Instahyre, Wellfound, Seek, Adzuna,
+USAJobs and Workday are all closed to a browser — they need a server-side key
+or scraping, and there is deliberately no server. So this is not "every job in
+the world"; it is every job on a board a static page is allowed to read.
+
+`registry.json` is generated, not hand-maintained — see [tools/](tools/) to
+re-run discovery or add companies. India is the weakest region: most Indian
+employers use Darwinbox, Keka or Zoho Recruit, none of which are reachable.
+
 ## Run it
 
 ```sh

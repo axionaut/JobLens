@@ -5,3 +5,6 @@ dev/
 _*.js
 vprobe.html
 probe.html
+
+tools/__pycache__/
+*.pyc
