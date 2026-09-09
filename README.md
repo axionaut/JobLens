@@ -145,11 +145,17 @@ role is. And the frequency band still filters — of 238 role words derived from
 16,233 postings, 71 are inside it. A team codename falls under the floor,
 `engineer` goes over the ceiling.
 
-### 203 tags across nine lanes
+### 228 tags across eleven lanes
 
-Tech, role, domain, conditions, **company stage**, **benefits**, **office**,
-plus the structured facets (level, location, region, pay band, experience,
-family). Company stage, benefits and office days were missing entirely until
+Tech, role, domain, conditions, company stage, benefits, office,
+**qualification** (degrees, certifications, licences, publications) and
+**eligibility** (work authorization, citizenship, ITAR, background checks,
+residency) — plus the structured facets (level, location, region, pay band,
+experience, family).
+
+Eligibility is its own lane because "can I take this?" is a different question
+from "am I qualified?", and it is the one that most often makes a perfect-looking
+posting a wasted application. Company stage, benefits and office days were missing entirely until
 v6 — nothing distinguished a twelve-person seed startup from a listed
 multinational, `Equity` was the only benefit, and `Hybrid` covered everything
 from one day a month to four days a week.
@@ -185,14 +191,18 @@ within your current pool**, because ranking data has no absolute scale: you
 never said a job was 4 out of 5, only that one tag beats another. A pool where
 every posting scores the same shows `—`, not 0%.
 
-### Live scores, still order
+### It sorts itself
 
-Every percentage on screen refreshes when you rank something — a full rescore
-lands ~220ms after your last click. The **order** deliberately holds still,
-because a ranked posting leaves the For You pool the moment you rank it, so
-re-sorting mid-click would pull the card out from under your cursor. When the
-pinned order has fallen behind the scores, the view offers
-`re-sort — N cards moved`. It never does it to you unasked.
+For You re-sorts automatically, on two clocks: percentages refresh ~220ms after
+a click with the order held, and the list re-sorts ~1.1s after your **last**
+click. One debounce for both re-sorted *between* clicks — people click tags
+about every half second — so the card being ranked moved before the next click
+landed.
+
+What makes this safe is that For You now keeps everything it has scored, so a
+re-sort can only move a card, never delete it. **Rate is exempt**: it ranks by
+unseen tags, so a posting leaves that pool the instant it is ranked, and you
+need the card to stay put while you rank three tags on it.
 
 ### "more like this" / "not for me"
 

@@ -639,3 +639,75 @@ An inline SVG data URI in `index.html`: a magnifier over three ranked bars --
 the lens, and the ordering it learns. No extra request, no binary in the repo,
 and it scales to any tab size. `theme-color` is set to the page background so
 mobile browser chrome matches.
+
+## 14. Automatic sorting
+
+### 14.1 What made it safe
+
+The order was pinned (4.1) for one reason: ranking a posting removed it from the
+For You pool, so a re-sort deleted the card out from under the cursor. Remove
+that and the hazard goes with it.
+
+`isCandidate` is now `!hidden && passesFilters` -- For You is "your best
+matches", not "postings you have not touched yet". A re-sort can only MOVE a
+card now, never make it disappear, so it can happen on its own. `pinnedDrift`,
+`resortHtml`, `#resortSlot` and the `data-repin` handler are all gone.
+
+### 14.2 Two clocks, because 220ms re-sorted between clicks
+
+The first attempt reused the single 220ms debounce for both rescoring and
+re-sorting. It failed in the browser: people click tags roughly every half
+second, so the card being ranked moved before the next click landed and that
+click hit a different posting.
+
+- `RESCORE_DELAY` 220ms: every visible percentage recomputed, order **held**.
+  Numbers changing under you costs nothing.
+- `REORDER_DELAY` 1100ms after the LAST click: the pin is released and the list
+  re-sorts. Longer than a click cadence, shorter than a pause to read.
+
+Both timers are cancelled by `repinOrder`, so a filter change is not undone a
+second later by a stale reorder.
+
+### 14.3 Rate is exempt, and has to be
+
+`HOLDS_ITS_ORDER` exempts Rate from the automatic re-sort. Rate ranks by unseen
+tags, so a posting leaves that pool the instant it is ranked -- releasing the pin
+there deletes the card you are still working on. This was caught in the browser:
+the first version released the pin in every view and broke exactly that flow.
+
+You rank three tags on one card in Rate; the card has to stay put between
+clicks. It drops out when you leave the view and come back.
+
+## 15. Qualification and eligibility
+
+Two new lanes, 27 entries. Previously the whole of this was two Conditions
+entries -- "degree required" and "no degree required" -- which collapsed a
+Bachelor's, a PhD and a CPA licence into one bit.
+
+**Qualification** (16): what you must already hold. Bachelors, Masters, PhD,
+MBA, CS degree, Quantitative degree, Bootcamp/Self-taught, cloud / security /
+PM / finance certifications, Professional licence, Published research, Portfolio
+required, Native-level English, No degree required.
+
+**Eligibility** (11): whether you are ALLOWED to take it, which is a different
+question from whether you are qualified -- and the one that most often makes an
+otherwise perfect posting a wasted application. Work authorization required,
+Citizens only, US persons only (ITAR), Background check, Drug screening,
+Driving licence, Must reside in country, Right to work not sponsored, On-call
+and Shift eligibility, Equal opportunity notice.
+
+One false positive found while testing: bare `master` matched prose -- "you will
+master the domain quickly" became a Masters requirement. Both degree patterns
+now require the degree word to be followed by degree/of/in, or to be an
+unambiguous abbreviation (MSc, MTech, BTech).
+
+## 16. Go to top
+
+A fixed button, bottom-right, hidden until you are one screenful down. The first
+threshold was 1.5 screens, and on a list only twice the viewport tall the page
+stops scrolling before that condition is ever met -- so the button never
+appeared. Caught in the browser.
+
+The scroll listener is passive and only flips one attribute. Clicking it moves
+focus to the active tab as well as scrolling, so a keyboard user is not left at
+the bottom of the document with the tab order unchanged.

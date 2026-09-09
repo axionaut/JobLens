@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -882,7 +882,7 @@ const TAG_CATEGORIES = {
   work: 'Work', tech: 'Tech', domain: 'Domain', seniority: 'Seniority',
   experience: 'Experience', location: 'Location', pay: 'Pay', condition: 'Conditions',
   family: 'Role family', stage: 'Company', perk: 'Benefits', office: 'Office',
-  title: 'Role words'
+  title: 'Role words', qual: 'Qualification', elig: 'Eligibility'
 };
 
 const w = body => new RegExp('(^|[^a-z0-9+#.])' + body + '([^a-z0-9+#]|$)', 'i');
@@ -1120,11 +1120,45 @@ const TAG_ONTOLOGY = [
   ['Rotational/Weekend', 'condition', /\b(weekend (work|shifts)|rotational shifts|standby duty)\b/i],
   ['Take-home assignment', 'condition', /\b(take[- ]home (assignment|exercise|task)|paid trial project)\b/i],
   ['Live coding interview', 'condition', /\b(live coding|pair programming interview|whiteboard interview)\b/i],
-  ['No degree required', 'condition', /\b(no degree required|degree is not required|equivalent practical experience|self-taught welcome)\b/i],
-  ['Degree required', 'condition', /\b(bachelor'?s degree (is )?required|must hold a (bachelor|master)|phd required)\b/i],
+  ['No degree required', 'qual', /\b(no degree required|degree is not required|degree or equivalent|equivalent practical experience|self-taught welcome|in lieu of a degree)\b/i],
   ['Startup founding role', 'condition', /\b(founding (engineer|team member|designer)|employee number \d|first (engineering )?hire)\b/i],
   ['Manager of managers', 'condition', /\b(manage(r of|rs reporting)|second[- ]line manager|managing managers)\b/i],
-  ['Individual contributor', 'condition', /\b(individual contributor|ic track|no direct reports)\b/i]
+  ['Individual contributor', 'condition', /\b(individual contributor|ic track|no direct reports)\b/i],
+  // --- qualifications -------------------------------------------------------
+  // What you must already hold. Previously only "degree required" vs "no degree
+  // required" existed, buried in Conditions, which collapsed a Bachelor's, a
+  // PhD and a CPA licence into one bit.
+  ['Bachelors', 'qual', /\b(bachelor'?s?\s+(degree|of|in)|b\.?s\.?c?\.?\s+(in|degree)|undergraduate degree|b\.?tech\b|be\/btech)\b/i],
+  ['Masters', 'qual', /\b(master'?s?\s+(degree|of|in)|m\.?s\.?c?\.?\s+(in|degree)|msc\b|m\.?tech\b|postgraduate degree)\b/i],
+  ['PhD', 'qual', /\b(ph\.?d\.?|doctorate|doctoral degree)\b/i],
+  ['MBA', 'qual', /\bmba\b/i],
+  ['CS degree', 'qual', /\b(computer science|software engineering|electrical engineering)\s+(degree|or related|or equivalent|background)\b|\bdegree in (computer science|cs\b|engineering)/i],
+  ['Quantitative degree', 'qual', /\bdegree in\b[^.]{0,40}\b(mathematics|statistics|physics|economics|operations research)\b/i],
+  ['Bootcamp/Self-taught', 'qual', /\b(bootcamp|self-?taught|career chang(er|e)|non-traditional background)\b/i],
+  ['Cloud certification', 'qual', /\b(aws certified|azure certified|gcp certified|solutions architect certification|certified kubernetes|cka\b|ckad\b)\b/i],
+  ['Security certification', 'qual', /\b(cissp|cisa|cism|comptia|security\+|oscp|ceh\b|gsec)\b/i],
+  ['PM certification', 'qual', /\b(pmp\b|prince2|csm\b|certified scrum|safe agilist|itil\b)\b/i],
+  ['Finance certification', 'qual', /\b(cfa\b|cpa\b|acca\b|frm\b|chartered accountant|ca\s+qualified)\b/i],
+  ['Professional licence', 'qual', /\b(professional engineer|\bp\.?e\.?\s+licen[cs]e|registered nurse|\brn\b licen[cs]e|medical licen[cs]e|bar admission|admitted to practice|licensed (attorney|architect|therapist))\b/i],
+  ['Published research', 'qual', /\b(publications? (in|at)\b|first-author|neurips|icml|iclr|cvpr|acl\b|track record of publications)\b/i],
+  ['Portfolio required', 'qual', /\b(portfolio (is )?required|please (include|share) (a |your )?portfolio|link to your portfolio|case studies of your work)\b/i],
+  ['Native-level English', 'qual', /\b(native (english|speaker)|native-level english|fluent english|excellent (written and )?(verbal )?english)\b/i],
+
+  // --- eligibility ----------------------------------------------------------
+  // Whether you are ALLOWED to take it, which is a different question from
+  // whether you are qualified -- and the one that most often makes an otherwise
+  // perfect posting a waste of an application.
+  ['Work authorization required', 'elig', /\b(must (be )?(legally )?(authorized|authorised|eligible) to work|right to work|legally entitled to work|valid work (permit|authorization|authorisation)|work authorization is required)\b/i],
+  ['Citizens only', 'elig', /\b((us|u\.s\.|american|uk|british|canadian|australian) citizen(ship)? (is )?(required|only)|must be a (us|u\.s\.|uk) citizen|citizenship required)\b/i],
+  ['US persons only (ITAR)', 'elig', /\b(itar|export control(led)?|us person(s)? (only|as defined)|ear\s+regulations)\b/i],
+  ['Background check', 'elig', /\b(background check|criminal record check|dbs check|police clearance|vetting process)\b/i],
+  ['Drug screening', 'elig', /\b(drug (test|screen(ing)?)|pre-employment (drug|screening))\b/i],
+  ['Driving licence', 'elig', /\b(driver'?s? licen[cs]e|driving licen[cs]e|clean driving record|valid licen[cs]e to drive)\b/i],
+  ['Must reside in country', 'elig', /\b(must (be )?(resid|liv)(e|ing) in|residents? of\b[^.]{0,30}\bonly|based in\b[^.]{0,25}\brequired|located in\b[^.]{0,25}\brequired)\b/i],
+  ['Right to work not sponsored', 'elig', /\b(we (are )?(cannot|can not|do not|don'?t) sponsor|no visa sponsorship (is )?(available|offered|provided)|sponsorship is not available)\b/i],
+  ['On-call eligibility', 'elig', /\b(must be (available|willing) (for|to) (on-?call|out of hours)|participate in an on-?call rotation)\b/i],
+  ['Shift eligibility', 'elig', /\b(must be (available|willing) to work (nights|weekends|shifts)|availability (for|to work) (weekends|evenings))\b/i],
+  ['Equal opportunity notice', 'elig', /\b(equal opportunit(y|ies) employer|we do not discriminate|affirmative action|eeo\b)\b/i]
 ];
 
 // Experience floors are worth an opinion of their own -- "8+ years" is a
@@ -2149,10 +2183,18 @@ function rankedJobs() {
   return Object.values(state.jobs).filter(job => hasRanking(job) || job.dismissed || job.liked);
 }
 
-// A liked posting stays in For You and sorts with everything else -- it earned
-// its place, and it is the answer to "more like this".
+// For You is now "your best matches", not "postings you have not touched yet".
+//
+// The order used to be pinned because ranking a posting removed it from this
+// pool, so a re-sort would delete the card out from under the cursor. That was
+// the whole justification. Keeping ranked postings here removes the hazard: a
+// re-sort can only ever MOVE a card now, never make it disappear, so the sort
+// can happen on its own and the manual "re-sort" button is gone.
+//
+// Rate is the view that still drops what you have judged, and it still pins its
+// order for exactly the original reason -- see viewRate.
 function isCandidate(job) {
-  return !hasRanking(job) && !job.hidden && passesFilters(job);
+  return !job.hidden && passesFilters(job);
 }
 
 /* --------------------------------------------------------------- rendering */
@@ -2286,12 +2328,9 @@ function collapseDuplicates(entries) {
 // schedules a full re-render (see scheduleRescore): same order, every visible
 // percentage recomputed. Positions hold, values move.
 //
-// `pinnedDrift` counts how far the pinned order has fallen behind the scores, so
-// the view can offer a re-sort instead of silently deciding for the user.
 // Dismissed and hidden postings are dropped from the pin, because "not for me"
 // is an explicit request to remove the card.
 let pinnedOrder = { key: '', ids: [] };
-let pinnedDrift = 0;
 
 function viewKey() {
   const f = state.filters;
@@ -2300,10 +2339,13 @@ function viewKey() {
 
 function repinOrder() {
   pinnedOrder = { key: '', ids: [] };
-  pinnedDrift = 0;
-  // A rescore still in flight would land on the list a moment after it was
-  // re-sorted or refiltered and quietly undo it.
+  // Either timer still in flight would land on the list a moment after it was
+  // refiltered and quietly undo it.
   if (rescoreTimer) { clearTimeout(rescoreTimer); rescoreTimer = null; }
+  if (typeof reorderTimer !== 'undefined' && reorderTimer) {
+    clearTimeout(reorderTimer);
+    reorderTimer = null;
+  }
 }
 
 function pinnedList(entries) {
@@ -2317,38 +2359,18 @@ function pinnedList(entries) {
       const entry = byId.get(id) || { job: job, fit: predictFit(job) };
       kept.push(entry);
     });
-    // `entries` arrives already sorted the way the view wants it, so the two
-    // sequences differ exactly where the pin has gone stale. Cards absent from
-    // the fresh list (just ranked, so out of the candidate pool) are skipped:
-    // they are being held in place deliberately and are not drift.
-    const fresh = entries.map(entry => entry.job.id).filter(id => {
-      const job = state.jobs[id];
-      return job && !job.hidden;
-    }).slice(0, VISIBLE_SLICE);
-    const held = kept.map(entry => entry.job.id).filter(id => byId.has(id))
-      .slice(0, VISIBLE_SLICE);
-    pinnedDrift = held.reduce((n, id, i) => n + (fresh[i] === id ? 0 : 1), 0);
     return kept;
   }
   pinnedOrder = { key: key, ids: entries.map(entry => entry.job.id) };
-  pinnedDrift = 0;
   return entries;
 }
 
-// Offered rather than applied, and it lives in the sticky bar: it was inside a
-// per-view notice paragraph, which cost a whole band above the grid to say one
-// sentence and scrolled away exactly when you wanted it.
-//
 // Views set `viewHint` instead of emitting their own banner, and render() paints
-// hint and re-sort into the bar together.
+// it into the sticky bar.
 let viewHint = '';
 
 function renderBarNotice() {
   $('#viewHint').innerHTML = viewHint;
-  $('#resortSlot').innerHTML = pinnedDrift
-    ? '<button class="resort" data-repin="1">re-sort \u2014 ' + pinnedDrift +
-      ' card' + (pinnedDrift === 1 ? '' : 's') + ' moved</button>'
-    : '';
 }
 
 // Hard ceiling on what is ever put in the DOM at once. Each view slices to its
@@ -2387,6 +2409,10 @@ function viewForYou() {
   }
   const scored = scoredList(candidates);
   const status = tasteStatus();
+  // Pinned between renders so the 220ms number refresh moves nothing -- and the
+  // reorder timer clears the pin a second after you stop clicking, which is
+  // what makes the sort automatic. Nothing here can vanish on a re-sort, which
+  // is what makes that safe at all (see isCandidate).
   if (!status.usable) {
     const byDate = pinnedList(collapseDuplicates(scored)
       .sort((a, b) => daysAgo(a.job.postedAt) - daysAgo(b.job.postedAt)));
@@ -2398,17 +2424,21 @@ function viewForYou() {
     .sort((a, b) => b.fit.score - a.fit.score ||
                     b.fit.knownTags - a.fit.knownTags ||
                     a.job.title.localeCompare(b.job.title)));
-  viewHint = 'Ranked from ' + status.pairs.toLocaleString() + ' comparisons over ' +
-    status.tags + ' tags · % is pool position, not a rating';
+  viewHint = 'Re-sorts itself as you rank · ' + status.pairs.toLocaleString() +
+    ' comparisons over ' + status.tags + ' tags · % is pool position, not a rating';
   return renderGrid(ranked.slice(0, VISIBLE_SLICE), '');
 }
 
 // The postings that would teach the most: those carrying rankable tags the
 // model has never seen a comparison for. Ranking a posting made entirely of
 // tags it already understands confirms what it knows and adds nothing.
+// Still pinned, and this is the one place the original reason survives: a
+// posting leaves this pool the moment it is ranked, so re-sorting on each click
+// would remove the card mid-way through ranking its tags. You rank three tags on
+// one card here; the card has to stay put between clicks.
 function viewRate() {
   const candidates = Object.values(state.jobs)
-    .filter(j => isCandidate(j) && !j.liked);
+    .filter(j => isCandidate(j) && !hasRanking(j) && !j.liked);
   if (!candidates.length) return '<div class="empty">Nothing to rank under these filters.</div>';
   const scored = scoredList(candidates);
   const model = tagModel();
@@ -2774,10 +2804,22 @@ function render() {
 /* ------------------------------------------------------------------- wiring */
 
 // A ranking moves every score, so every card on screen goes stale, not only the
-// one clicked. Both halves of that are now handled: the clicked card is redrawn
-// at once, because that is the feedback for the click itself, and a full
-// re-render is scheduled for when the burst of clicks stops -- same pinned
-// order, every visible percentage recomputed.
+// one clicked. The clicked card is redrawn at once, because that is the feedback
+// for the click itself, and a full re-render is scheduled for when the burst of
+// clicks stops -- which now RE-SORTS For You as well as rescoring it.
+//
+// Two clocks, because updating a number and moving a card are not equally
+// disruptive:
+//
+//  - RESCORE_DELAY (220ms) after a click, every visible percentage is
+//    recomputed with the order HELD. Numbers changing under you costs nothing.
+//  - REORDER_DELAY (1100ms) after your LAST click, the pin is released and the
+//    list re-sorts itself.
+//
+// A single 220ms debounce did both, and it re-sorted between clicks: people
+// click tags roughly every half second, so the card being ranked moved before
+// the next click landed and that click hit a different posting. 1100ms is longer
+// than a click cadence and shorter than a pause to read.
 //
 // The old comment justified skipping this with "1.5s at 60 ratings". Re-measured
 // at the size this actually runs at -- 16,224 postings, 300 rankings -- a full
@@ -2785,15 +2827,29 @@ function render() {
 // memoised, and the corpus was being scored twice per render to fill two fields
 // (fit.positive / fit.negative) that nothing ever read.
 const RESCORE_DELAY = 220;
+const REORDER_DELAY = 1100;
 let rescoreTimer = null;
+let reorderTimer = null;
+
+// Rate is exempt from the automatic re-sort, and has to be: a posting leaves
+// its pool the instant it is ranked, so releasing the pin there deletes the
+// card you are still working on. Releasing it in For You only ever moves cards.
+const HOLDS_ITS_ORDER = { rate: true };
 
 function scheduleRescore() {
   if (rescoreTimer) clearTimeout(rescoreTimer);
+  if (reorderTimer) clearTimeout(reorderTimer);
   rescoreTimer = setTimeout(() => {
     rescoreTimer = null;
     render();
   }, RESCORE_DELAY);
+  reorderTimer = setTimeout(() => {
+    reorderTimer = null;
+    if (!HOLDS_ITS_ORDER[state.view]) repinOrder();
+    render();
+  }, REORDER_DELAY);
 }
+
 
 function refreshCard(id) {
   const job = state.jobs[id];
@@ -2811,7 +2867,7 @@ function refreshCard(id) {
 
 document.addEventListener('click', async event => {
   const target = event.target.closest(
-    '[data-tag],[data-clear],[data-like],[data-hide],[data-restore],[data-repin],' +
+    '[data-tag],[data-clear],[data-like],[data-hide],[data-restore],' +
     '[data-unfilter],.tab');
   if (!target) return;
   if (target.classList.contains('tab')) {
@@ -2828,9 +2884,6 @@ document.addEventListener('click', async event => {
     await dismissJob(target.dataset.hide);
   } else if (target.dataset.restore) {
     await restoreJob(target.dataset.restore);
-  } else if (target.dataset.repin) {
-    repinOrder();
-    render();
   } else if (target.dataset.unfilter) {
     await setFilter(target.dataset.unfilter, FILTER_OFF[target.dataset.unfilter]);
   }
@@ -2922,6 +2975,30 @@ function bindFilterBar() {
   $('#btnClearFilters').addEventListener('click', clearAllFilters);
 }
 
+// One screenful. The first threshold was 1.5 screens, and on a list only twice
+// the viewport tall the page stops scrolling before that condition is ever met,
+// so the button never appeared.
+// The scroll listener is passive and does nothing but flip one attribute, so it
+// stays off the critical path of a long list.
+const TO_TOP_AFTER = 1.0;
+
+function bindToTop() {
+  const button = $('#btnTop');
+  const paint = () => {
+    button.hidden = window.scrollY < window.innerHeight * TO_TOP_AFTER;
+  };
+  paint();
+  window.addEventListener('scroll', paint, { passive: true });
+  window.addEventListener('resize', paint, { passive: true });
+  button.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Focus follows the scroll, or a keyboard user is left at the bottom of the
+    // document with the tab order unchanged.
+    const firstTab = document.querySelector('#tabs .tab.active') || $('#tabs');
+    if (firstTab && firstTab.focus) firstTab.focus({ preventScroll: true });
+  });
+}
+
 function bindResume() {
   const modal = $('#resumeModal');
   const drop = $('#resumeDrop');
@@ -3008,6 +3085,7 @@ async function init() {
   bindTabs();
   bindCollapse();
   bindFilterBar();
+  bindToTop();
   bindResume();
   $('#btnRefresh').addEventListener('click', refreshPostings);
   $('#btnStop').addEventListener('click', () => { refreshAbort = true; });

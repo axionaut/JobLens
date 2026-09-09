@@ -6,7 +6,7 @@
 <title>JobLens</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%230e1116%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2240%22%20width%3D%227%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22%234c9aff%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2232%22%20width%3D%227%22%20height%3D%2220%22%20rx%3D%222%22%20fill%3D%22%234c9aff%22%20opacity%3D%22.75%22%2F%3E%3Crect%20x%3D%2235%22%20y%3D%2224%22%20width%3D%227%22%20height%3D%2228%22%20rx%3D%222%22%20fill%3D%22%234c9aff%22%20opacity%3D%22.5%22%2F%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2222%22%20r%3D%2213%22%20fill%3D%22none%22%20stroke%3D%22%233fb950%22%20stroke-width%3D%225%22%2F%3E%3Cpath%20d%3D%22M47%2031%20L56%2040%22%20stroke%3D%22%233fb950%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
 <meta name="theme-color" content="#0e1116">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 <a class="skip" href="#main">Skip to postings</a>
@@ -17,7 +17,7 @@
      Two dense rows, and the filter row folds away when you are not using it. -->
 <div id="topbar">
   <div class="barMain">
-    <div class="brand">JobLens <span id="versionBadge" class="badge">v11</span></div>
+    <div class="brand">JobLens <span id="versionBadge" class="badge">v12</span></div>
 
     <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
       <button class="tab" role="tab" data-view="foryou" aria-selected="false">For You</button>
@@ -46,11 +46,9 @@
   <div class="barStats" id="barStats">
     <div class="headline" id="headline" aria-live="polite"></div>
     <div id="activePills" class="pills"></div>
-    <!-- The per-view hint and the re-sort offer live here rather than in a
-         banner above the grid: one line in the bar that never scrolls away,
-         instead of a whole band that did. -->
+    <!-- The per-view hint lives here rather than in a banner above the grid:
+         one line in the bar that never scrolls away, instead of a whole band. -->
     <div id="viewHint" class="viewHint"></div>
-    <div id="resortSlot"></div>
   </div>
 
   <section id="deck" class="deck">
@@ -89,6 +87,13 @@
 
 <main id="main"></main>
 
+<!-- Appears once you are far enough down that the sticky bar's own controls are
+     no longer the fastest way back. Hidden until then so it never covers a card
+     it is not needed for. -->
+<button id="btnTop" class="toTop" hidden aria-label="Go to top">
+  <span aria-hidden="true">↑</span> top
+</button>
+
 <div id="resumeModal" class="modal" hidden>
   <div class="modalBody">
     <h2>Resume (optional)</h2>
@@ -107,6 +112,6 @@
   </div>
 </div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
