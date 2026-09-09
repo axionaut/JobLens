@@ -581,3 +581,61 @@ a 844px viewport before the first card.
 
 Separate from the filter fold (5.2) on purpose: they answer different questions
 -- "I am not filtering right now" and "I need the screen".
+
+## 12. English only
+
+### 12.1 Why this is per posting, not per source
+
+Broadening the registry brought in boards that do not post in English.
+Arbeitnow is Europe-wide and mostly German; Recruitee boards in the Netherlands
+post in Dutch. Neither is uniformly so: of 120 live Arbeitnow postings sampled,
+66 were German and 54 were genuinely English -- "Machine Learning Consultant
+(m/w/d)" carries an English description and sits next to a German one. Dropping
+the source would throw away the English half.
+
+### 12.2 Function words, not content words
+
+`detectLanguage` scores marker words for nine languages and picks the winner.
+The markers are function words on purpose: a German posting can be full of
+English nouns (Kubernetes, Machine Learning, Consultant) and still be German,
+but it cannot avoid `und`, `der`, `für`, `wir`. Single-letter markers are left
+out, because `e`, `o` and `a` appear constantly in code and initials. Accented
+characters are preserved -- stripping them would erase exactly the evidence.
+
+A non-English language must beat English by `LANG_MARGIN` (1.35) with at least
+`LANG_MIN_HITS` (6) hits. Everything short, ambiguous or unrecognised stays
+English, because wrongly hiding a posting the user wants is worse than letting
+an occasional German one through.
+
+Measured against live data: 0 of 40 English Greenhouse postings misflagged,
+9 of 11 Dutch caught, 66 of 120 Arbeitnow flagged German with the remaining 54
+spot-checked as genuinely English.
+
+### 12.3 A filter, not a deletion
+
+`job.lang` is stored per posting and `state.filters.lang` defaults to `en`.
+Nothing is discarded at ingest -- the language is a fact about the record, and
+the filter is reversible.
+
+A posting whose `lang` is missing is kept rather than hidden, so a detection gap
+never costs the user a posting.
+
+`Clear all` deliberately does **not** reset the language, unlike every other
+filter. Language is a standing preference about what you can read, not something
+you sweep while browsing, and clearing it would put German postings back into a
+list the user asked to be English. Its own pill still removes it, and the choice
+persists in `settings.langFilter`.
+
+### 12.4 Migration
+
+Full bodies are not stored, only a 320-character excerpt -- enough function
+words for the detector, and the alternative was refetching 16,000 postings to
+learn what language they were already written in. Backfilled on load and written
+back once, alongside the `titleTags` backfill from 8.6.
+
+## 13. Favicon
+
+An inline SVG data URI in `index.html`: a magnifier over three ranked bars --
+the lens, and the ordering it learns. No extra request, no binary in the repo,
+and it scales to any tab size. `theme-color` is set to the page background so
+mobile browser chrome matches.

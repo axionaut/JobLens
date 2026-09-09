@@ -16,7 +16,7 @@
  * sends Access-Control-Allow-Origin:*, so collection runs from the browser.
  */
 
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 
 /* ---------------------------------------------------------------- constants */
 
@@ -65,10 +65,11 @@ const state = {
   // salary is the API having no pay field at all, not the employer withholding
   // it -- and because a record thrown away cannot come back if the company
   // fills the figure in later. Shed bytes, never records.
-  settings: { resumeTags: {}, resumeSavedAt: '', resumeChars: 0, salaryFilter: 'has', facetImportance: {} },
+  settings: { resumeTags: {}, resumeSavedAt: '', resumeChars: 0, salaryFilter: 'has',
+              langFilter: 'en', facetImportance: {} },
   meta: { lastRefresh: '' },
   view: 'foryou',
-  filters: { text: '', seniority: '', location: '', age: 0, salary: 'has' }
+  filters: { text: '', seniority: '', location: '', age: 0, salary: 'has', lang: 'en' }
 };
 
 let registry = [];
@@ -168,6 +169,13 @@ async function loadState() {
       job.titleTags = titleTags(job.title);
       job.tags = Array.from(new Set((job.tags || []).concat(job.titleTags)));
       migrated.push(job);
+    }
+    // Full bodies are not stored, only a 320-character excerpt -- enough
+    // function words for the detector, and the alternative is refetching 16,000
+    // postings to learn what language they are already written in.
+    if (!job.lang) {
+      job.lang = detectLanguage(job.title + ' ' + (job.excerpt || ''));
+      if (migrated.indexOf(job) === -1) migrated.push(job);
     }
     state.jobs[job.id] = job;
   });
@@ -1245,6 +1253,88 @@ const STOPWORD_SOURCE = 'a an the and or but if then else of for for to in on at
   'looking join hiring people world every make making like well right best good ensure drive support high level';
 const STOPWORDS = new Set(STOPWORD_SOURCE.split(/\s+/));
 
+// Which language is this posting written in?
+//
+// Arbeitnow is Europe-wide and mostly German; Recruitee boards in the
+// Netherlands post in Dutch. Both also carry English postings, so this cannot
+// be decided per source -- "Machine Learning Consultant (m/w/d)" is an English
+// description on a German board and a German description sits next to it.
+//
+// Function words, not content words. A German posting can be full of English
+// nouns (Kubernetes, Machine Learning, Consultant) and still be German; what it
+// cannot avoid is "und", "der", "für", "wir". Single-letter markers are left out
+// -- "e", "o", "a" appear constantly in code snippets and initials.
+const LANG_MARKERS = {
+  en: ('the and you with for our are will your have this that from work team ' +
+       'experience about who what role join their they them been also more into ' +
+       'across within using while would should could than these those there here'),
+  de: ('und der die das mit für wir sie dich den dem ein eine einen nicht sind ' +
+       'bei auch oder als aus zum zur ihre unser unsere sowie werden haben ' +
+       'kenntnisse aufgaben wenn dein deine uns beim durch über nach kannst ' +
+       'wird viel gute teilzeit vollzeit mitarbeiter stelle bereich'),
+  nl: ('en de het een van voor met je jij wij ons onze bij niet zijn ook of als ' +
+       'uit naar werk ervaring functie jouw wat waar heb hebt worden binnen ' +
+       'door over aan dat die deze zoals graag samen'),
+  fr: ('et le la les des une pour avec vous nous votre notre dans sur est sont ' +
+       'plus ou au aux par cette votre chez sera vos nos poste equipe travail ' +
+       'experience competences ainsi tout tous'),
+  es: ('el la los las del una para con tu su nuestro nuestra en es son mas al ' +
+       'por que esta este como sobre tus sus trabajo experiencia equipo puesto ' +
+       'ademas tambien'),
+  it: ('il la gli le del della un una per con nostro nostra in sono piu al da ' +
+       'che questa questo come sul nel alla dei delle lavoro esperienza squadra'),
+  pt: ('os as do da dos das um uma para com seu sua nosso nossa em sao mais ao ' +
+       'por que esta este como sobre seus suas trabalho experiencia equipe vaga'),
+  pl: ('oraz jest dla nie sie praca jako przy tym bardzo firma stanowisko ' +
+       'wymagania oferujemy doswiadczenie zespol'),
+  sv: ('och att som med for har vi du din dina vara inte eller detta denna ' +
+       'arbete erfarenhet team tjansten hos')
+};
+
+const LANG_SETS = (() => {
+  const out = {};
+  Object.keys(LANG_MARKERS).forEach(code => {
+    out[code] = new Set(LANG_MARKERS[code].split(/\s+/).filter(Boolean));
+  });
+  return out;
+})();
+
+const LANG_NAMES = {
+  en: 'English', de: 'German', nl: 'Dutch', fr: 'French', es: 'Spanish',
+  it: 'Italian', pt: 'Portuguese', pl: 'Polish', sv: 'Swedish'
+};
+
+// A non-English language has to WIN clearly before a posting is called
+// non-English: more marker hits than English, by this factor, on top of a
+// minimum absolute count. Anything short, ambiguous or unrecognised stays
+// English, because wrongly hiding a real posting is worse than letting an
+// occasional German one through.
+const LANG_MARGIN = 1.35;
+const LANG_MIN_HITS = 6;
+
+function detectLanguage(text) {
+  const words = String(text || '').toLowerCase()
+    // Accented letters are kept: dropping them would erase exactly the
+    // evidence that a posting is not English.
+    .replace(/[^a-z\u00c0-\u024f]+/g, ' ')
+    .split(' ');
+  if (words.length < 25) return 'en';
+  const hits = {};
+  Object.keys(LANG_SETS).forEach(code => { hits[code] = 0; });
+  words.forEach(word => {
+    if (word.length < 2) return;
+    Object.keys(LANG_SETS).forEach(code => {
+      if (LANG_SETS[code].has(word)) hits[code]++;
+    });
+  });
+  let best = 'en';
+  Object.keys(hits).forEach(code => {
+    if (code !== 'en' && hits[code] > hits[best === 'en' ? 'en' : best]) best = code;
+  });
+  if (best === 'en') return 'en';
+  return hits[best] >= LANG_MIN_HITS && hits[best] >= hits.en * LANG_MARGIN ? best : 'en';
+}
+
 // Role keywords, mined from the TITLE only.
 //
 // 2.1 closed the tag vocabulary because mining produced garbage -- but reread
@@ -1941,6 +2031,10 @@ function passesFilters(job, context) {
   const f = state.filters;
   const rated = context === 'rated';
   if (job.hidden && !rated) return false;
+  // A posting with no verdict yet is kept: records written before the language
+  // lane have `lang` backfilled on load, and letting an undetected one through
+  // is far better than hiding a posting the user wants.
+  if (f.lang && job.lang && job.lang !== f.lang) return false;
   if (f.seniority && job.seniority !== f.seniority) return false;
   if (f.location && job.locationClass !== f.location) return false;
   if (f.age && daysAgo(job.postedAt) > f.age) return false;
@@ -2010,6 +2104,7 @@ function tagPosting(row) {
   if (years) derived.push(years);
 
   const fromTitle = titleTags(row.title);
+  const lang = detectLanguage(row.title + ' ' + body);
   const tags = Array.from(new Set(ontologyTags(haystack).concat(derived, fromTitle)));
   return {
     id: row.entry.ats + ':' + row.entry.slug + ':' + row.key,
@@ -2024,6 +2119,7 @@ function tagPosting(row) {
     family: family,
     seniority: seniority,
     salary: salary,
+    lang: lang,
     tags: tags,
     titleTags: fromTitle,
     excerpt: body.slice(0, 320),
@@ -2562,16 +2658,17 @@ function renderDeck(force) {
 // only seeing 8,000 of 16,000 postings" without inspecting every one.
 const FILTER_LABELS = {
   text: 'Search', seniority: 'Level', location: 'Location',
-  salary: 'Salary', age: 'Posted'
+  salary: 'Salary', age: 'Posted', lang: 'Language'
 };
 // What "off" is for each control. Note salary: '' is Any, i.e. no filtering at
 // all -- 'has' is merely the value it SHIPS with, which is a different thing.
 // Comparing against the shipped value instead of against off listed Any as an
 // active filter, so a pill appeared that could not be removed: clearing it set
 // salary to '' and '' was what it already was.
-const FILTER_OFF = { text: '', seniority: '', location: '', salary: '', age: 0 };
+const FILTER_OFF = { text: '', seniority: '', location: '', salary: '', age: 0, lang: '' };
 
 function filterValueText(key, value) {
+  if (key === 'lang') return LANG_NAMES[value] || value;
   if (key === 'age') return value + 'd';
   if (key === 'salary') {
     if (value === 'has') return 'has salary';
@@ -2605,10 +2702,14 @@ function renderFilterState() {
 async function setFilter(key, value) {
   state.filters[key] = value;
   const input = { text: '#fText', seniority: '#fSeniority', location: '#fLocation',
-                  salary: '#fSalary', age: '#fAge' }[key];
+                  salary: '#fSalary', age: '#fAge', lang: '#fLang' }[key];
   if (input) $(input).value = value;
   if (key === 'salary') {
     state.settings.salaryFilter = value;
+    await saveMeta();
+  }
+  if (key === 'lang') {
+    state.settings.langFilter = value;
     await saveMeta();
   }
   repinOrder();
@@ -2618,6 +2719,11 @@ async function setFilter(key, value) {
 async function clearAllFilters() {
   // Salary clears to Any, not back to 'Has salary only': someone pressing
   // "clear all" wants to stop hiding postings, not to restore a hiding rule.
+  //
+  // Language is deliberately NOT cleared. It is a standing preference about
+  // what you can read, not a filter you sweep while browsing, and clearing it
+  // would put German postings back in a list the user asked to be English.
+  // Its own pill still removes it.
   const inputs = { text: '#fText', seniority: '#fSeniority', location: '#fLocation',
                    age: '#fAge', salary: '#fSalary' };
   Object.keys(inputs).forEach(key => {
@@ -2884,6 +2990,14 @@ async function init() {
   bindFilter('#fAge', 'age', Number);
   $('#fSalary').value = state.settings.salaryFilter || '';
   state.filters.salary = state.settings.salaryFilter || '';
+  // Defaults to English rather than to "everything", because a list you cannot
+  // read is not a shorter list, it is a broken one.
+  const storedLang = state.settings.langFilter === undefined ? 'en' : state.settings.langFilter;
+  $('#fLang').value = storedLang;
+  state.filters.lang = storedLang;
+  $('#fLang').addEventListener('input', async event => {
+    await setFilter('lang', event.target.value);
+  });
   $('#fSalary').addEventListener('input', async event => {
     state.filters.salary = event.target.value;
     state.settings.salaryFilter = event.target.value;

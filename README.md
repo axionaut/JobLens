@@ -154,6 +154,19 @@ v6 — nothing distinguished a twelve-person seed startup from a listed
 multinational, `Equity` was the only benefit, and `Hybrid` covered everything
 from one day a month to four days a week.
 
+### English only, by default
+
+Widening the registry brought in German (Arbeitnow) and Dutch (Recruitee)
+postings. Neither board is uniformly so — of 120 live Arbeitnow postings, 66
+were German and 54 genuinely English — so language is detected **per posting**
+from function words (`und`, `der`, `für`, `wir`, not `Kubernetes`), across nine
+languages.
+
+The filter defaults to English and shows as a removable `Language English` pill.
+Nothing is discarded at ingest, an undetected posting is kept rather than
+hidden, and `Clear all` leaves the language alone — it is a standing preference,
+not a filter you sweep while browsing.
+
 ### The learner
 
 Bradley-Terry over pairwise comparisons — the same maths as Elo. Clicked beats
